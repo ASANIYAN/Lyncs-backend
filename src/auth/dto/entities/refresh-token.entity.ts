@@ -1,5 +1,6 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -15,16 +16,16 @@ export class RefreshToken {
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'user_id' })
-  user: User; // [cite: 83]
+  user: User;
 
   @Column()
-  token_hash: string; // [cite: 83]
+  token_hash: string;
 
   @Column('timestamp')
-  expires_at: Date; // [cite: 83]
+  expires_at: Date;
 
   @Column({ default: false })
-  revoked: boolean; // [cite: 83, 190]
+  revoked: boolean;
 }
 
 @Entity('blocked_domains')
@@ -33,9 +34,15 @@ export class BlockedDomain {
   id: string;
 
   @Index({ unique: true })
-  @Column({ unique: true })
-  domain: string; // [cite: 86, 87]
+  @Column({ unique: true, length: 255 })
+  domain: string;
 
-  @Column('text', { nullable: true })
-  reason: string; // [cite: 86]
+  @Column({ type: 'text', nullable: true })
+  reason: string;
+
+  @CreateDateColumn()
+  added_at: Date;
+
+  @Column({ default: true })
+  is_active: boolean;
 }

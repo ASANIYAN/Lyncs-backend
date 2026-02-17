@@ -1,7 +1,20 @@
 import { UrlService } from './url.service';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { Controller, Get, Param, Res, Req, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Res,
+  Req,
+  HttpStatus,
+  Post,
+  UseGuards,
+  Body,
+} from '@nestjs/common';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RateLimiterGuard } from '../auth/guards/rate-limiter.guard';
+import { CreateUrlDto } from './dto/create-url.dto';
 
 @Controller()
 export class RedirectController {
@@ -31,5 +44,17 @@ export class RedirectController {
     // 302 is chosen over 301 to ensure every click passes through
     // the analytics layer for accurate data.
     return res.redirect(urlEntry.original_url, 302);
+  }
+}
+
+@Controller('urls')
+export class UrlController {
+  constructor(private readonly urlService: UrlService) {}
+
+  @Post('shorten')
+  @UseGuards(JwtAuthGuard, RateLimiterGuard)
+  async create(@Body() createUrlDto: CreateUrlDto, @Req() req: any) {
+    // req.user is populated by JwtAuthGuard
+    return this.urlService.create(createUrlDto.url, req.user);
   }
 }

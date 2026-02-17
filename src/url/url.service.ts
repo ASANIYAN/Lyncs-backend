@@ -2,12 +2,14 @@ import {
   Injectable,
   Logger,
   InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Url } from './entities/url.entity';
 import { Base62Generator } from './utils/base62.generator';
 import { User } from '../auth/dto/entities/user.entity';
+import { SafetyService } from './safety.service';
 
 @Injectable()
 export class UrlService {
@@ -18,6 +20,7 @@ export class UrlService {
     @InjectRepository(Url)
     private readonly urlRepository: Repository<Url>,
     private readonly generator: Base62Generator,
+    private readonly safetyService: SafetyService,
   ) {}
 
   async findByCode(short_code: string): Promise<Url | null> {
@@ -34,6 +37,13 @@ export class UrlService {
   }
 
   async create(originalUrl: string, user: User): Promise<Url> {
+    const isBlocked = await this.safetyService.isDomainBlocked(originalUrl);
+    if (isBlocked) {
+      throw new BadRequestException(
+        'This domain is blocked for safety reasons',
+      );
+    }
+
     let shortCode: string;
     let retries = 0;
 

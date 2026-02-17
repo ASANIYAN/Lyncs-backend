@@ -4,6 +4,7 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
@@ -28,12 +29,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.client.quit();
   }
 
-  /**
-   * Universal Set method
-   * @param key Redis key
-   * @param value Value to store
-   * @param ttl Optional Time-to-live in seconds
-   */
+  async expire(key: string, seconds: number): Promise<void> {
+    try {
+      await this.client.expire(key, seconds);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown';
+      this.logger.error(`Failed to set expiry on ${key}: ${msg}`);
+      throw new InternalServerErrorException('Cache operation failed');
+    }
+  }
+
   async set(key: string, value: string, ttl?: number): Promise<void> {
     if (ttl) {
       await this.client.set(key, value, 'EX', ttl);
