@@ -80,4 +80,22 @@ export class UrlService {
       'Could not generate a unique short code',
     );
   }
+
+  async findAllByUser(
+    user: User,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<[Url[], number]> {
+    try {
+      return await this.urlRepository.findAndCount({
+        where: { user: { id: user.id } },
+        order: { created_at: 'DESC' }, // Newest first
+        take: limit,
+        skip: (page - 1) * limit,
+      });
+    } catch (error) {
+      console.log('error fetching urls by user: ', error);
+      throw new InternalServerErrorException('Failed to fetch dashboard data');
+    }
+  }
 }

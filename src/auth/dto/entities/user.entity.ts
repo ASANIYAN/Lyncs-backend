@@ -18,7 +18,7 @@ export class User {
   email: string;
 
   @Column({ select: false }) // Don't return hash in queries by default
-  password_hash: string;
+  password: string;
 
   @CreateDateColumn()
   created_at: Date;

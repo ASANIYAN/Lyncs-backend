@@ -5,10 +5,18 @@ import { UrlService } from './url.service';
 import { SafetyService } from './safety.service';
 import { Base62Generator } from './utils/base62.generator';
 import { BlockedDomain } from '../auth/dto/entities/refresh-token.entity';
+import { RedirectController, UrlController } from './url.controller';
+import { AnalyticsModule } from '../analytics/analytics.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Url, BlockedDomain])],
+  imports: [
+    TypeOrmModule.forFeature([Url, BlockedDomain]),
+    AnalyticsModule,
+    AuthModule,
+  ],
   providers: [UrlService, SafetyService, Base62Generator],
+  controllers: [UrlController, RedirectController],
   exports: [UrlService],
 })
 export class UrlModule {}

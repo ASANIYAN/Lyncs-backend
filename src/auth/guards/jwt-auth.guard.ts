@@ -20,7 +20,10 @@ export class JwtAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
 
-    if (!token) throw new UnauthorizedException();
+    if (!token) {
+      console.log('Unauthorized error: Token not exist');
+      throw new UnauthorizedException();
+    }
 
     const isBlacklisted = await this.redisService.exists(`bl_${token}`);
     if (isBlacklisted) {
@@ -31,15 +34,40 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync(token, {
         secret: this.configService.get('JWT_ACCESS_SECRET'),
       });
-      request['user'] = payload;
+      request.user = payload;
       return true;
-    } catch {
+    } catch (error) {
+      console.log('Unauthorized error: ', error);
       throw new UnauthorizedException();
     }
   }
 
-  private extractTokenFromHeader(request: any): string | undefined {
-    const [type, token] = request.headers.authorization?.split(' ') ?? [];
-    return type === 'Bearer' ? token : undefined;
+  private extractTokenFromHeader(request: {
+    headers?: {
+      authorization?: string;
+    };
+  }): string | undefined {
+    const authHeader = request?.headers?.authorization;
+
+    if (!authHeader) {
+      console.log('No authorization header found');
+      return undefined;
+    }
+
+    const parts = authHeader.split(' ');
+    const [type, token] = parts;
+
+    if (type !== 'Bearer') {
+      console.log(`Invalid auth type: ${type}, expected 'Bearer'`);
+      return undefined;
+    }
+
+    if (!token) {
+      console.log('Token is empty');
+      return undefined;
+    }
+
+    console.log('Token extracted successfully');
+    return token;
   }
 }

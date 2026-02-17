@@ -4,11 +4,17 @@ import {
   InternalServerErrorException,
   Logger,
   BadRequestException,
+  UnauthorizedException,
+  ConflictException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { User } from './dto/entities/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '../common/redis/redis.service';
+import { LoginDto } from './dto/login.dto';
+import { Repository } from 'typeorm';
+import { RegisterDto } from './dto/register.dto';
+import { User } from './dto/entities/user.entity';
 
 @Injectable()
 export class AuthService {
@@ -16,6 +22,8 @@ export class AuthService {
   private readonly saltRounds: number;
 
   constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
@@ -70,12 +78,77 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async logout(token: string) {
-    const decoded: any = this.jwtService.decode(token);
-    const remainingTime = decoded.exp - Math.floor(Date.now() / 1000);
+  async register(registerDto: RegisterDto): Promise<{ message: string }> {
+    const { email, password } = registerDto;
 
-    if (remainingTime > 0) {
-      await this.redisService.set(`bl_${token}`, 'revoked', remainingTime);
+    const existingUser = await this.userRepository.findOne({
+      where: { email },
+    });
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    try {
+      const saltRounds = this.configService.get<number>('AUTH_SALT_ROUNDS', 12);
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+      const user = this.userRepository.create({
+        email,
+        password: hashedPassword,
+      });
+
+      await this.userRepository.save(user);
+      return { message: 'User registered successfully' };
+    } catch (error) {
+      console.log('Error registering:', error);
+      throw new InternalServerErrorException('Registration failed');
+    }
+  }
+
+  async login(
+    loginDto: LoginDto,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const { email, password } = loginDto;
+
+    const user = await this.userRepository.findOne({
+      where: { email },
+      select: ['id', 'email', 'password'], // Explicitly select password
+    });
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const { accessToken, refreshToken } = await this.generateTokens(user);
+
+    return { accessToken, refreshToken };
+  }
+
+  async logout(token: string): Promise<void> {
+    try {
+      // Decode without verification just to get the 'exp' claim
+      const decoded = this.jwtService.decode(token);
+
+      if (!decoded || !decoded.exp) {
+        // If token is malformed, we just return
+        return;
+      }
+
+      // Calculate TTL: expiration timestamp minus current time (in seconds)
+      const now = Math.floor(Date.now() / 1000);
+      const remainingTime = decoded.exp - now;
+
+      if (remainingTime > 0) {
+        // Store in Redis with the specific TTL
+        await this.redisService.set(`bl_${token}`, 'revoked', remainingTime);
+      }
+    } catch (error) {
+      console.log('error: ', error);
+      this.logger.error(`Logout failed for token: ${token}`);
     }
   }
 }
