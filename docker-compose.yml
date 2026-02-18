@@ -3,8 +3,12 @@ services:
     build:
       context: .
       target: runner
+      args:
+        - NODE_ENV=${NODE_ENV:-development}
+        - THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-128}
+        - PORT=${PORT:-3000}
     ports:
-      - '3000:3000'
+      - '${PORT:-3000}:3000'
     env_file:
       - .env.docker
     environment:
@@ -20,15 +24,15 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=0000
-      - POSTGRES_DB=url_shortener
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
     ports:
-      - '5432:5432'
+      - '${DB_PORT}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d url_shortener']
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_NAME}']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -38,7 +42,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - '6379:6379'
+      - '${REDIS_PORT:-6379}:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
