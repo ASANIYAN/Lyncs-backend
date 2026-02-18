@@ -23,7 +23,13 @@ import {
   PaginatedUrlResponseDto,
   UrlResponseDto,
 } from './dto/url-list-response.dto';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 
 @ApiTags('redirection')
 @Controller()
@@ -75,6 +81,16 @@ export class UrlController {
 
   @Post('shorten')
   @UseGuards(JwtAuthGuard, RateLimiterGuard)
+  @ApiBearerAuth('Bearer')
+  @ApiOperation({ summary: 'Create a shortened URL' })
+  @ApiResponse({
+    status: 201,
+    description: 'URL shortened successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing bearer token',
+  })
   async create(@Body() createUrlDto: CreateUrlDto, @Req() req: any) {
     // req.user is populated by JwtAuthGuard
     return this.urlService.create(createUrlDto.url, req.user);
@@ -82,6 +98,16 @@ export class UrlController {
 
   @Get('dashboard')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('Bearer')
+  @ApiOperation({ summary: 'Get user dashboard with shortened URLs' })
+  @ApiResponse({
+    status: 200,
+    description: 'User URLs retrieved successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing bearer token',
+  })
   async getUserUrls(
     @Req() req: any,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,

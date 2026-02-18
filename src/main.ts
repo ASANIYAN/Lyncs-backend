@@ -29,7 +29,18 @@ async function bootstrap() {
     .setVersion('1.0')
     .addTag('auth', 'Authentication & User Management')
     .addTag('urls', 'URL Shortening & Management')
-    .addBearerAuth() // This adds the 'Authorize' button in Swagger UI
+    .addTag('redirection', 'URL Redirection & Analytics')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'JWT',
+        description: 'Enter your JWT token',
+        in: 'header',
+      },
+      'Bearer',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

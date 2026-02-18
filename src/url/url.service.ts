@@ -11,6 +11,14 @@ import { Base62Generator } from './utils/base62.generator';
 import { User } from '../auth/dto/entities/user.entity';
 import { SafetyService } from './safety.service';
 
+// User payload from authenticated request
+interface AuthUser {
+  id: string;
+  email: string;
+  iat: number;
+  exp: number;
+}
+
 @Injectable()
 export class UrlService {
   private readonly logger = new Logger(UrlService.name);
@@ -36,12 +44,17 @@ export class UrlService {
     }
   }
 
-  async create(originalUrl: string, user: User): Promise<Url> {
+  async create(originalUrl: string, user: AuthUser): Promise<Url> {
     const isBlocked = await this.safetyService.isDomainBlocked(originalUrl);
     if (isBlocked) {
       throw new BadRequestException(
         'This domain is blocked for safety reasons',
       );
+    }
+
+    const userId = user.id;
+    if (!userId) {
+      throw new InternalServerErrorException('Invalid user information');
     }
 
     let shortCode: string;
@@ -58,14 +71,18 @@ export class UrlService {
         const newUrl = this.urlRepository.create({
           original_url: originalUrl,
           short_code: shortCode,
-          user: user,
+          user: { id: userId } as User, // Create relationship with just the ID
           click_count: 0,
         });
 
         try {
           return await this.urlRepository.save(newUrl);
         } catch (error: unknown) {
-          console.error(error);
+          const errorMsg =
+            error instanceof Error ? error.message : 'Unknown error';
+          this.logger.error(
+            `Error saving URL on retry ${retries + 1}: ${errorMsg}`,
+          );
           retries++;
           continue;
         }
@@ -82,19 +99,25 @@ export class UrlService {
   }
 
   async findAllByUser(
-    user: User,
+    user: AuthUser,
     page: number = 1,
     limit: number = 10,
   ): Promise<[Url[], number]> {
+    const userId = user.id;
+    if (!userId) {
+      throw new InternalServerErrorException('Invalid user information');
+    }
+
     try {
       return await this.urlRepository.findAndCount({
-        where: { user: { id: user.id } },
+        where: { user: { id: userId } },
         order: { created_at: 'DESC' }, // Newest first
         take: limit,
         skip: (page - 1) * limit,
       });
     } catch (error) {
-      console.log('error fetching urls by user: ', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error fetching urls by user: ${errorMsg}`);
       throw new InternalServerErrorException('Failed to fetch dashboard data');
     }
   }

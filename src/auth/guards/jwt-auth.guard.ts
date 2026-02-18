@@ -21,7 +21,7 @@ export class JwtAuthGuard implements CanActivate {
     const token = this.extractTokenFromHeader(request);
 
     if (!token) {
-      console.log('Unauthorized error: Token not exist');
+      console.log('Unauthorized error: Token not exist:', token);
       throw new UnauthorizedException();
     }
 
@@ -31,10 +31,21 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync(token, {
+      const payload: {
+        sub: string;
+        email: string;
+        iat: number;
+        exp: number;
+      } = await this.jwtService.verifyAsync(token, {
         secret: this.configService.get('JWT_ACCESS_SECRET'),
       });
-      request.user = payload;
+      // Normalize payload: convert 'sub' to 'id' for consistency with User entity
+      (request as Record<string, unknown>).user = {
+        id: payload.sub,
+        email: payload.email,
+        iat: payload.iat,
+        exp: payload.exp,
+      };
       return true;
     } catch (error) {
       console.log('Unauthorized error: ', error);
@@ -55,10 +66,16 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const parts = authHeader.split(' ');
-    const [type, token] = parts;
+    let token: string | undefined;
 
-    if (type !== 'Bearer') {
-      console.log(`Invalid auth type: ${type}, expected 'Bearer'`);
+    // Handle both "Bearer token" and plain "token"
+    if (parts.length === 2 && parts[0] === 'Bearer') {
+      token = parts[1];
+    } else if (parts.length === 1) {
+      // If no "Bearer" prefix, use the whole string as token
+      token = parts[0];
+    } else {
+      console.log(`Invalid authorization header format: ${authHeader}`);
       return undefined;
     }
 
