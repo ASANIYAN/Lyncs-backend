@@ -11,6 +11,7 @@ All hardcoded values in Docker files have been replaced with environment variabl
 ## 1. **docker-compose.yml** - Fully Parameterized
 
 ### API Service
+
 ```yaml
 api:
   build:
@@ -29,11 +30,13 @@ api:
 ```
 
 **Variables Used:**
+
 - `NODE_ENV` - Application environment (development/production)
 - `PORT` - Port number (default: 3000)
 - `UV_THREADPOOL_SIZE` - Thread pool size (default: 128)
 
 ### Database Service
+
 ```yaml
 db:
   image: postgres:15-alpine
@@ -48,12 +51,14 @@ db:
 ```
 
 **Variables Used:**
+
 - `DB_USERNAME` - PostgreSQL user (default: postgres)
 - `DB_PASSWORD` - PostgreSQL password
 - `DB_NAME` - Database name (default: url_shortener)
 - `DB_PORT` - Database port (default: 5432)
 
 ### Redis Service
+
 ```yaml
 redis:
   image: redis:7-alpine
@@ -62,6 +67,7 @@ redis:
 ```
 
 **Variables Used:**
+
 - `REDIS_PORT` - Redis port (default: 6379)
 
 ---
@@ -69,12 +75,14 @@ redis:
 ## 2. **Dockerfile** - Build Arguments
 
 ### Stage 1: Builder
+
 ```dockerfile
 FROM node:20-alpine AS builder
 ARG NODE_ENV=production
 ```
 
 ### Stage 2: Runtime
+
 ```dockerfile
 FROM node:20-alpine AS runner
 ARG NODE_ENV=production
@@ -89,6 +97,7 @@ EXPOSE ${PORT}
 ```
 
 **Build Arguments:**
+
 - `NODE_ENV` - Environment type (default: production)
 - `THREADPOOL_SIZE` - UV thread pool size (default: 128)
 - `PORT` - Application port (default: 3000)
@@ -128,6 +137,7 @@ RATE_LIMIT_MAX_REQUESTS=100
 ## 4. **.env** - Local Development Configuration
 
 For local development (without Docker):
+
 - `DB_HOST=localhost` (instead of `db`)
 - `REDIS_URL=redis://localhost:6379` (instead of `redis://redis:6379`)
 
@@ -136,17 +146,21 @@ For local development (without Docker):
 ## Usage
 
 ### Building with Custom Configuration
+
 ```bash
 docker-compose build --build-arg NODE_ENV=production --build-arg THREADPOOL_SIZE=256
 ```
 
 ### Running with Different Ports
+
 ```bash
 PORT=8080 DB_PORT=5433 REDIS_PORT=6380 docker-compose up
 ```
 
 ### Environment Overrides
+
 All variables in `.env.docker` can be overridden by:
+
 1. Setting environment variables before running docker-compose
 2. Creating a `.env.local` file (if using env_file in docker-compose)
 3. Command-line argument `--env-file <filename>`
@@ -166,6 +180,7 @@ All variables in `.env.docker` can be overridden by:
 ## Security Notes
 
 ⚠️ **Important:**
+
 - `.env` and `.env.docker` files contain sensitive information
 - Add these files to `.gitignore` (they should already be ignored)
 - Never commit secrets to version control
@@ -177,19 +192,19 @@ All variables in `.env.docker` can be overridden by:
 
 ## Variables Reference
 
-| Variable | File | Default | Description |
-|----------|------|---------|-------------|
-| `NODE_ENV` | `.env.docker` | development | Application environment |
-| `PORT` | `.env.docker` | 3000 | API server port |
-| `AUTH_SALT_ROUNDS` | `.env.docker` | 12 | Bcrypt salt rounds |
-| `DB_HOST` | `.env.docker` | db | Database hostname |
-| `DB_PORT` | `.env.docker` | 5432 | Database port |
-| `DB_USERNAME` | `.env.docker` | postgres | Database user |
-| `DB_PASSWORD` | `.env.docker` | 0000 | Database password |
-| `DB_NAME` | `.env.docker` | url_shortener | Database name |
-| `REDIS_URL` | `.env.docker` | redis://redis:6379 | Redis connection URL |
-| `REDIS_PORT` | `.env.docker` | 6379 | Redis port |
-| `JWT_ACCESS_SECRET` | `.env.docker` | (64-char hex) | JWT access token secret |
-| `JWT_REFRESH_SECRET` | `.env.docker` | (64-char hex) | JWT refresh token secret |
-| `RATE_LIMIT_WINDOW_MS` | `.env.docker` | 60000 | Rate limit window (ms) |
-| `RATE_LIMIT_MAX_REQUESTS` | `.env.docker` | 100 | Max requests per window |
+| Variable                  | File          | Default            | Description              |
+| ------------------------- | ------------- | ------------------ | ------------------------ |
+| `NODE_ENV`                | `.env.docker` | development        | Application environment  |
+| `PORT`                    | `.env.docker` | 3000               | API server port          |
+| `AUTH_SALT_ROUNDS`        | `.env.docker` | 12                 | Bcrypt salt rounds       |
+| `DB_HOST`                 | `.env.docker` | db                 | Database hostname        |
+| `DB_PORT`                 | `.env.docker` | 5432               | Database port            |
+| `DB_USERNAME`             | `.env.docker` | postgres           | Database user            |
+| `DB_PASSWORD`             | `.env.docker` | 0000               | Database password        |
+| `DB_NAME`                 | `.env.docker` | url_shortener      | Database name            |
+| `REDIS_URL`               | `.env.docker` | redis://redis:6379 | Redis connection URL     |
+| `REDIS_PORT`              | `.env.docker` | 6379               | Redis port               |
+| `JWT_ACCESS_SECRET`       | `.env.docker` | (64-char hex)      | JWT access token secret  |
+| `JWT_REFRESH_SECRET`      | `.env.docker` | (64-char hex)      | JWT refresh token secret |
+| `RATE_LIMIT_WINDOW_MS`    | `.env.docker` | 60000              | Rate limit window (ms)   |
+| `RATE_LIMIT_MAX_REQUESTS` | `.env.docker` | 100                | Max requests per window  |
