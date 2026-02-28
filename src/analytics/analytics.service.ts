@@ -42,7 +42,7 @@ export class AnalyticsService {
   }
 
   private async incrementUrlClickCount(shortCode: string): Promise<void> {
-    // use a raw increment query to avoid race conditions with .save()
+    // raw increment query to avoid race conditions with .save()
     await this.clickRepository.manager.query(
       `UPDATE urls SET click_count = click_count + 1 WHERE short_code = $1`,
       [shortCode],

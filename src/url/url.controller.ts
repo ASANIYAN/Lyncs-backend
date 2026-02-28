@@ -31,6 +31,15 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 
+type AuthenticatedRequest = FastifyRequest & {
+  user: {
+    id: string;
+    email: string;
+    iat: number;
+    exp: number;
+  };
+};
+
 @ApiTags('redirection')
 @Controller()
 export class RedirectController {
@@ -62,10 +71,9 @@ export class RedirectController {
     }
 
     // Fire-and-forget: Track analytics in background
-    this.analyticsService.trackClick(code, req).catch(err => {
-      this.logger.error(
-        `Analytics tracking failed for ${code}: ${err.message}`,
-      );
+    this.analyticsService.trackClick(code, req).catch((err: unknown) => {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      this.logger.error(`Analytics tracking failed for ${code}: ${errorMsg}`);
     });
 
     // 302 is chosen over 301 to ensure every click passes through
@@ -91,7 +99,10 @@ export class UrlController {
     status: 401,
     description: 'Unauthorized - Invalid or missing bearer token',
   })
-  async create(@Body() createUrlDto: CreateUrlDto, @Req() req: any) {
+  async create(
+    @Body() createUrlDto: CreateUrlDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     // req.user is populated by JwtAuthGuard
     return this.urlService.create(createUrlDto.url, req.user);
   }
@@ -109,7 +120,7 @@ export class UrlController {
     description: 'Unauthorized - Invalid or missing bearer token',
   })
   async getUserUrls(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ): Promise<PaginatedUrlResponseDto> {

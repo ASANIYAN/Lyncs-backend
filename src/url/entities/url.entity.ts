@@ -1,4 +1,4 @@
-import { User } from 'src/auth/dto/entities/user.entity';
+import { User } from '../../auth/dto/entities/user.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,

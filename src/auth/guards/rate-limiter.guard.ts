@@ -8,6 +8,15 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../common/redis/redis.service';
 
+type AuthenticatedRequest = {
+  user?: {
+    id: string;
+    email: string;
+    iat: number;
+    exp: number;
+  };
+};
+
 @Injectable()
 export class RateLimiterGuard implements CanActivate {
   constructor(
@@ -16,8 +25,8 @@ export class RateLimiterGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const userId = request.user?.sub;
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const userId = request.user?.id;
 
     if (!userId) return true;
 

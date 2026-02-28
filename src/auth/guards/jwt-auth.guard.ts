@@ -4,9 +4,19 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../common/redis/redis.service';
+
+type AuthenticatedRequest = FastifyRequest & {
+  user?: {
+    id: string;
+    email: string;
+    iat: number;
+    exp: number;
+  };
+};
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -17,7 +27,7 @@ export class JwtAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.extractTokenFromHeader(request);
 
     if (!token) {
@@ -40,7 +50,7 @@ export class JwtAuthGuard implements CanActivate {
         secret: this.configService.get('JWT_ACCESS_SECRET'),
       });
       // Normalize payload: convert 'sub' to 'id' for consistency with User entity
-      (request as Record<string, unknown>).user = {
+      request.user = {
         id: payload.sub,
         email: payload.email,
         iat: payload.iat,
@@ -53,12 +63,8 @@ export class JwtAuthGuard implements CanActivate {
     }
   }
 
-  private extractTokenFromHeader(request: {
-    headers?: {
-      authorization?: string;
-    };
-  }): string | undefined {
-    const authHeader = request?.headers?.authorization;
+  private extractTokenFromHeader(request: FastifyRequest): string | undefined {
+    const authHeader = request.headers?.authorization;
 
     if (!authHeader) {
       console.log('No authorization header found');
