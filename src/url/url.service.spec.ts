@@ -8,6 +8,9 @@ import { UrlService } from './url.service';
 import { Url } from './entities/url.entity';
 import { Base62Generator } from './utils/base62.generator';
 import { SafetyService } from './safety.service';
+import { RedisService } from '../common/redis/redis.service';
+import { UrlNormalizerService } from './url-normalizer.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import type { Repository } from 'typeorm';
 
 type UrlRepositoryMock = Pick<Repository<Url>, 'findOne' | 'create' | 'save'>;
@@ -23,6 +26,8 @@ describe('UrlService', () => {
   let repo: jest.Mocked<UrlRepositoryMock>;
   let generator: jest.Mocked<Base62Generator>;
   let safetyService: jest.Mocked<SafetyService>;
+  let urlNormalizer: jest.Mocked<UrlNormalizerService>;
+  let analyticsService: jest.Mocked<AnalyticsService>;
 
   const mockUser: AuthUser = {
     id: '1',
@@ -51,6 +56,18 @@ describe('UrlService', () => {
           provide: SafetyService,
           useValue: { isDomainBlocked: jest.fn() },
         },
+        {
+          provide: RedisService,
+          useValue: { get: jest.fn(), set: jest.fn(), getClient: jest.fn() },
+        },
+        {
+          provide: UrlNormalizerService,
+          useValue: { normalizeUrl: jest.fn() },
+        },
+        {
+          provide: AnalyticsService,
+          useValue: { queueSafetyCheck: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -58,6 +75,8 @@ describe('UrlService', () => {
     repo = module.get(getRepositoryToken(Url));
     generator = module.get(Base62Generator);
     safetyService = module.get(SafetyService);
+    urlNormalizer = module.get(UrlNormalizerService);
+    analyticsService = module.get(AnalyticsService);
   });
 
   it('should throw BadRequestException if domain is blocked', async () => {
@@ -70,8 +89,14 @@ describe('UrlService', () => {
 
   it('should succeed on first try if no collision', async () => {
     safetyService.isDomainBlocked.mockResolvedValue(false);
+    urlNormalizer.normalizeUrl.mockReturnValue({
+      normalized: 'https://google.com',
+      hash: 'hash1',
+    });
     generator.generate.mockReturnValue('abc123');
-    repo.findOne.mockResolvedValue(null); // No collision
+    repo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
     repo.create.mockReturnValue({
       id: '1',
       short_code: 'abc123',
@@ -110,16 +135,22 @@ describe('UrlService', () => {
     } as Url);
 
     const result = await service.create('http://google.com', mockUser);
-    expect(result.short_code).toBe('abc123');
-    expect(repo.findOne).toHaveBeenCalledTimes(1);
+    expect(result.url.short_code).toBe('abc123');
+    expect(result.isNew).toBe(true);
+    expect(repo.findOne).toHaveBeenCalledTimes(2);
+    expect(analyticsService.queueSafetyCheck).toHaveBeenCalledTimes(1);
   });
 
   it('should retry if a collision occurs', async () => {
     safetyService.isDomainBlocked.mockResolvedValue(false);
+    urlNormalizer.normalizeUrl.mockReturnValue({
+      normalized: 'https://google.com',
+      hash: 'hash2',
+    });
     generator.generate.mockReturnValueOnce('collid').mockReturnValue('unique');
 
-    // First call returns an existing URL, second returns null
     repo.findOne
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
         id: 'old',
         short_code: 'collid',
@@ -178,14 +209,20 @@ describe('UrlService', () => {
 
     const result = await service.create('http://google.com', mockUser);
 
-    expect(result.short_code).toBe('unique');
-    expect(repo.findOne).toHaveBeenCalledTimes(2);
+    expect(result.url.short_code).toBe('unique');
+    expect(repo.findOne).toHaveBeenCalledTimes(3);
   });
 
   it('should fail after 5 consecutive collisions', async () => {
     safetyService.isDomainBlocked.mockResolvedValue(false);
+    urlNormalizer.normalizeUrl.mockReturnValue({
+      normalized: 'https://google.com',
+      hash: 'hash3',
+    });
     generator.generate.mockReturnValue('always-colliding');
-    repo.findOne.mockResolvedValue({
+    repo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
       id: 'existing',
       short_code: 'always-colliding',
       original_url: 'http://example.com',
@@ -202,12 +239,12 @@ describe('UrlService', () => {
       is_active: true,
       click_count: 0,
       safety_status: 'pending',
-    } as Url);
+      } as Url);
 
     await expect(service.create('http://google.com', mockUser)).rejects.toThrow(
       InternalServerErrorException,
     );
 
-    expect(repo.findOne).toHaveBeenCalledTimes(5);
+    expect(repo.findOne).toHaveBeenCalledTimes(6);
   });
 });

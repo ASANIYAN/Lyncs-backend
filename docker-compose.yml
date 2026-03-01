@@ -21,6 +21,29 @@ services:
     networks:
       - backend
 
+  worker:
+    build:
+      context: .
+      target: runner
+      args:
+        - NODE_ENV=${NODE_ENV:-development}
+        - THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-128}
+        - PORT=${PORT:-3000}
+    command: npm run start:worker
+    env_file:
+      - .env.docker
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - ENABLE_HTTP=false
+      - ENABLE_WORKERS=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+
   db:
     image: postgres:15-alpine
     environment:

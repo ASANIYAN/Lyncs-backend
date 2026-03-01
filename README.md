@@ -42,6 +42,25 @@ $ npm run start:dev
 
 # production mode
 $ npm run start:prod
+
+# worker-only process (no HTTP listener)
+$ npm run start:worker
+```
+
+## Database migrations
+
+```bash
+# run pending migrations
+$ npm run migration:run
+
+# revert last migration
+$ npm run migration:revert
+
+# create an empty migration file
+$ npm run migration:create
+
+# generate migration from entity changes
+$ npm run migration:generate
 ```
 
 ## Run tests

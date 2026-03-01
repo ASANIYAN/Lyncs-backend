@@ -8,6 +8,8 @@ import { BlockedDomain } from '../auth/dto/entities/refresh-token.entity';
 import { RedirectController, UrlController } from './url.controller';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { AuthModule } from '../auth/auth.module';
+import { UrlNormalizerService } from './url-normalizer.service';
+import { SafetyWorker } from './safety.worker';
 
 @Module({
   imports: [
@@ -15,7 +17,13 @@ import { AuthModule } from '../auth/auth.module';
     AnalyticsModule,
     AuthModule,
   ],
-  providers: [UrlService, SafetyService, Base62Generator],
+  providers: [
+    UrlService,
+    SafetyService,
+    Base62Generator,
+    UrlNormalizerService,
+    SafetyWorker,
+  ],
   controllers: [UrlController, RedirectController],
   exports: [UrlService],
 })

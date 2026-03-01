@@ -40,4 +40,14 @@ export class Url {
 
   @Column({ default: 'pending' })
   safety_status: string;
+
+  @Column({ type: 'text', nullable: true })
+  normalized_url: string | null;
+
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  url_hash: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  last_checked_at: Date | null;
 }

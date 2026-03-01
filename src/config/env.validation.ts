@@ -20,7 +20,10 @@ export const envValidationSchema = Joi.object({
   AUTH_SALT_ROUNDS: Joi.number().min(8).max(14).default(12),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
   JWT_REFRESH_SECRET: Joi.string().min(32).required(),
+  JWT_ACCESS_EXPIRY: Joi.number().default(1800),
+  JWT_REFRESH_EXPIRY: Joi.number().default(604800),
 
   // Business Logic
   MAX_URLS_PER_HOUR: Joi.number().default(100),
+  GOOGLE_SAFE_BROWSING_API_KEY: Joi.string().allow('').optional(),
 });
