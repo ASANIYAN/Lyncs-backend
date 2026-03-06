@@ -29,7 +29,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: process.env.NODE_ENV !== 'production',
+        synchronize: false,
       }),
     }),
     RedisModule,

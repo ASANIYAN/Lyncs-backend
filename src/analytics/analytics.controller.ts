@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AnalyticsQueryService } from './analytics-query.service';
 import { FastifyRequest } from 'fastify';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 type AuthenticatedRequest = FastifyRequest & {
   user: {
@@ -12,12 +13,21 @@ type AuthenticatedRequest = FastifyRequest & {
   };
 };
 
+@ApiTags('analytics')
 @Controller('urls/:shortCode/analytics')
 @UseGuards(JwtAuthGuard)
+@ApiBearerAuth('Bearer')
 export class AnalyticsController {
   constructor(private readonly analyticsQuery: AnalyticsQueryService) {}
 
   @Get()
+  @ApiOperation({ summary: 'Get analytics for a short URL' })
+  @ApiQuery({
+    name: 'timeRange',
+    required: false,
+    enum: ['24h', '7d', '30d', '90d'],
+    description: 'Analytics window (default: 7d)',
+  })
   async getAnalytics(
     @Param('shortCode') shortCode: string,
     @Query('timeRange') timeRange = '7d',

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '../common/redis/redis.module';
+import { AuthModule } from '../auth/auth.module';
 import { Click } from './entities/click.entity';
 import { Url } from '../url/entities/url.entity';
 import { AnalyticsService } from './analytics.service';
@@ -9,7 +10,7 @@ import { AnalyticsController } from './analytics.controller';
 import { AnalyticsWorker } from './analytics.worker';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Click, Url]), RedisModule],
+  imports: [TypeOrmModule.forFeature([Click, Url]), RedisModule, AuthModule],
   providers: [AnalyticsService, AnalyticsWorker, AnalyticsQueryService],
   controllers: [AnalyticsController],
   exports: [AnalyticsService],

@@ -1,10 +1,11 @@
 services:
   api:
+    profiles: ['app']
     build:
       context: .
       target: runner
       args:
-        - NODE_ENV=${NODE_ENV:-development}
+        - NODE_ENV=production
         - THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-128}
         - PORT=${PORT:-3000}
     ports:
@@ -12,35 +13,57 @@ services:
     env_file:
       - .env.docker
     environment:
-      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_ENV=production
     depends_on:
-      db:
-        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     networks:
       - backend
 
   worker:
+    profiles: ['app']
     build:
       context: .
       target: runner
       args:
-        - NODE_ENV=${NODE_ENV:-development}
+        - NODE_ENV=production
         - THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-128}
         - PORT=${PORT:-3000}
     command: npm run start:worker
     env_file:
       - .env.docker
     environment:
-      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_ENV=production
       - ENABLE_HTTP=false
       - ENABLE_WORKERS=true
     depends_on:
-      db:
-        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
+    networks:
+      - backend
+
+  migrator:
+    profiles: ['app']
+    build:
+      context: .
+      target: runner
+      args:
+        - NODE_ENV=production
+        - THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-128}
+        - PORT=${PORT:-3000}
+    command: npm run migration:run:prod
+    env_file:
+      - .env.docker
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
     networks:
       - backend
 

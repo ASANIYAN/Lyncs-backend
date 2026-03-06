@@ -75,7 +75,7 @@ export class JwtAuthGuard implements CanActivate {
     let token: string | undefined;
 
     // Handle both "Bearer token" and plain "token"
-    if (parts.length === 2 && parts[0] === 'Bearer') {
+    if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
       token = parts[1];
     } else if (parts.length === 1) {
       // If no "Bearer" prefix, use the whole string as token

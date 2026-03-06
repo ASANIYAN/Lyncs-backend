@@ -27,6 +27,7 @@ import {
 import {
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
   ApiBearerAuth,
@@ -181,6 +182,47 @@ export class UrlController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('Bearer')
   @ApiOperation({ summary: 'Get user dashboard with shortened URLs' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    example: 1,
+    description: 'Page number (default: 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    example: 10,
+    description: 'Items per page (default: 10)',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search term for URL or short code',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['active', 'inactive'],
+    example: 'active',
+    description: 'Filter by URL status (default: active)',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    type: String,
+    example: 'created_at',
+    description: 'Sort field (default: created_at)',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['ASC', 'DESC'],
+    example: 'ASC',
+    description: 'Sort order (default: ASC)',
+  })
   @ApiResponse({ status: 200, description: 'User URLs retrieved successfully' })
   @ApiResponse({
     status: 401,
@@ -196,10 +238,10 @@ export class UrlController {
     @Req() req: AuthenticatedRequest,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
-    @Query('search') search?: string,
-    @Query('status') status?: string,
+    @Query('status') status: string = 'active',
     @Query('sortBy') sortBy = 'created_at',
-    @Query('sortOrder') sortOrder: 'ASC' | 'DESC' = 'DESC',
+    @Query('sortOrder') sortOrder: 'ASC' | 'DESC' = 'ASC',
+    @Query('search') search?: string,
   ): Promise<PaginatedUrlResponseDto> {
     const dashboard = await this.urlService.getDashboard(
       req.user.id,

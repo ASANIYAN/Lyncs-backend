@@ -16,7 +16,7 @@ export class Click {
   @Column('timestamp', { default: () => 'CURRENT_TIMESTAMP' })
   clicked_at: Date;
 
-  @Column({ length: 45, nullable: true })
+  @Column('varchar', { length: 45, nullable: true })
   ip_address: string | null;
 
   @Column('text', { nullable: true })
@@ -25,15 +25,15 @@ export class Click {
   @Column('text', { nullable: true })
   referrer: string | null;
 
-  @Column({ length: 2, nullable: true })
+  @Column('varchar', { length: 2, nullable: true })
   country: string | null;
 
-  @Column({ length: 20, nullable: true })
+  @Column('varchar', { length: 20, nullable: true })
   device_type: string | null;
 
-  @Column({ length: 50, nullable: true })
+  @Column('varchar', { length: 50, nullable: true })
   browser: string | null;
 
-  @Column({ length: 50, nullable: true })
+  @Column('varchar', { length: 50, nullable: true })
   os: string | null;
 }
