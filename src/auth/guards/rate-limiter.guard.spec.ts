@@ -5,13 +5,14 @@ import { RedisService } from '../../common/redis/redis.service';
 
 describe('RateLimiterGuard', () => {
   let guard: RateLimiterGuard;
-  let redisService: jest.Mocked<Pick<RedisService, 'incr' | 'expire'>>;
+  let evalMock: jest.Mock;
+  let redisService: jest.Mocked<Pick<RedisService, 'getClient'>>;
   let configService: jest.Mocked<Pick<ConfigService, 'get'>>;
 
   beforeEach(() => {
+    evalMock = jest.fn();
     redisService = {
-      incr: jest.fn(),
-      expire: jest.fn(),
+      getClient: jest.fn().mockReturnValue({ eval: evalMock }),
     };
     configService = {
       get: jest.fn().mockReturnValue(100),
@@ -32,34 +33,39 @@ describe('RateLimiterGuard', () => {
       }),
     }) as unknown as ExecutionContext;
 
-  it('should allow unauthenticated requests', async () => {
+  it('should allow unauthenticated requests without touching Redis', async () => {
     const allowed = await guard.canActivate(makeContext());
     expect(allowed).toBe(true);
-    expect(redisService.incr).not.toHaveBeenCalled();
+    expect(evalMock).not.toHaveBeenCalled();
   });
 
-  it('should set expiry for first request in window', async () => {
-    redisService.incr.mockResolvedValue(1);
+  it('should allow first request and execute atomic Lua script', async () => {
+    evalMock.mockResolvedValue(1);
 
     const allowed = await guard.canActivate(makeContext('user-1'));
 
     expect(allowed).toBe(true);
-    expect(redisService.incr).toHaveBeenCalledWith(
-      'ratelimit:user-1:create_url',
-    );
-    expect(redisService.expire).toHaveBeenCalledWith(
-      'ratelimit:user-1:create_url',
-      3600,
-    );
+    expect(evalMock).toHaveBeenCalledTimes(1);
+    // Verify the Lua script is called with the correct key and window TTL
+    const args = evalMock.mock.calls[0] as unknown[];
+    expect(args[2]).toBe('ratelimit:user-1:create_url');
+    expect(args[3]).toBe('3600');
   });
 
-  it('should throw when max requests exceeded', async () => {
-    configService.get.mockReturnValue(2);
-    redisService.incr.mockResolvedValue(3);
+  it('should throw HttpException when max requests exceeded', async () => {
+    // Build a guard with a low limit of 2 directly at construction time
+    const lowLimitConfig = {
+      get: jest.fn().mockReturnValue(2),
+    } as jest.Mocked<Pick<ConfigService, 'get'>>;
+    const lowLimitGuard = new RateLimiterGuard(
+      redisService as unknown as RedisService,
+      lowLimitConfig as unknown as ConfigService,
+    );
+    evalMock.mockResolvedValue(3); // count 3 > limit 2
 
     await expect(
-      guard.canActivate(makeContext('user-2')),
+      lowLimitGuard.canActivate(makeContext('user-2')),
     ).rejects.toBeInstanceOf(HttpException);
-    expect(redisService.expire).not.toHaveBeenCalled();
+    expect(evalMock).toHaveBeenCalledTimes(1); // still only one Redis call
   });
 });

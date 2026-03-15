@@ -6,13 +6,17 @@ import { Url } from '../url/entities/url.entity';
 
 describe('AnalyticsWorker', () => {
   let worker: AnalyticsWorker;
-  let redisService: jest.Mocked<Pick<RedisService, 'ackMessage'>>;
+  let redisService: jest.Mocked<Pick<RedisService, 'ackMessage' | 'getClient'>>;
+  let xack: jest.Mock;
   let clickRepo: jest.Mocked<Pick<Repository<Click>, 'insert'>>;
   let execute: jest.Mock;
 
   beforeEach(() => {
+    xack = jest.fn().mockResolvedValue(undefined);
+
     redisService = {
       ackMessage: jest.fn(),
+      getClient: jest.fn().mockReturnValue({ xack }),
     };
 
     clickRepo = {
@@ -63,6 +67,13 @@ describe('AnalyticsWorker', () => {
     expect(clickRepo.insert).toHaveBeenCalledTimes(1);
     expect(clickRepo.insert.mock.calls[0][0]).toHaveLength(1);
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(redisService.ackMessage).toHaveBeenCalledTimes(2);
+    // Both message ids should be acked in a single batched call
+    expect(xack).toHaveBeenCalledTimes(1);
+    expect(xack).toHaveBeenCalledWith(
+      'clicks:events',
+      'clicks-workers',
+      '1-0',
+      '2-0',
+    );
   });
 });

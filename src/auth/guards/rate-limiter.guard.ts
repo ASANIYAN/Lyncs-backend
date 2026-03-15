@@ -17,36 +17,49 @@ type AuthenticatedRequest = {
   };
 };
 
+/**
+ * Atomic rate-limit Lua script.
+ * Increments the counter and sets TTL in a single round-trip.
+ * Eliminates the race condition where the key could live forever if the
+ * process crashed between INCR and EXPIRE.
+ *
+ * Returns the current count after increment.
+ */
+const RATE_LIMIT_SCRIPT = `
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+`;
+
 @Injectable()
 export class RateLimiterGuard implements CanActivate {
+  private readonly windowSeconds = 3600;
+  private readonly maxRequests: number;
+
   constructor(
     private readonly redisService: RedisService,
-    private readonly configService: ConfigService,
-  ) {}
+    configService: ConfigService,
+  ) {
+    this.maxRequests = configService.get<number>('MAX_URLS_PER_HOUR', 100);
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const userId = request.user?.id;
-
     if (!userId) return true;
-
-    const windowSizeInSeconds = 3600; // 1 hour
-    const maxRequests = this.configService.get<number>(
-      'MAX_URLS_PER_HOUR',
-      100,
-    );
 
     const key = `ratelimit:${userId}:create_url`;
 
-    const currentUsage = await this.redisService.incr(key);
+    // Single atomic round-trip: INCR + conditional EXPIRE via Lua
+    const count = (await this.redisService
+      .getClient()
+      .eval(RATE_LIMIT_SCRIPT, 1, key, String(this.windowSeconds))) as number;
 
-    if (currentUsage === 1) {
-      await this.redisService.expire(key, windowSizeInSeconds);
-    }
-
-    if (currentUsage > maxRequests) {
+    if (count > this.maxRequests) {
       throw new HttpException(
-        'Rate limit exceeded. Try again in an hour.',
+        'Rate limit exceeded. Try again later.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }

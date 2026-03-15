@@ -2,6 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
@@ -20,36 +21,40 @@ type AuthenticatedRequest = FastifyRequest & {
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly logger = new Logger(JwtAuthGuard.name);
+  /** Cached at construction time — avoids ConfigService lookup on every request */
+  private readonly jwtSecret: string;
+
   constructor(
     private redisService: RedisService,
     private jwtService: JwtService,
-    private configService: ConfigService,
-  ) {}
+    configService: ConfigService,
+  ) {
+    this.jwtSecret = configService.getOrThrow<string>('JWT_ACCESS_SECRET');
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.extractTokenFromHeader(request);
 
     if (!token) {
-      console.log('Unauthorized error: Token not exist:', token);
-      throw new UnauthorizedException();
+      throw new UnauthorizedException('Missing bearer token');
     }
 
+    // Redis blacklist check (fast path — usually false)
     const isBlacklisted = await this.redisService.exists(`bl_${token}`);
     if (isBlacklisted) {
       throw new UnauthorizedException('Session expired or logged out');
     }
 
     try {
-      const payload: {
+      const payload = await this.jwtService.verifyAsync<{
         sub: string;
         email: string;
         iat: number;
         exp: number;
-      } = await this.jwtService.verifyAsync(token, {
-        secret: this.configService.get('JWT_ACCESS_SECRET'),
-      });
-      // Normalize payload: convert 'sub' to 'id' for consistency with User entity
+      }>(token, { secret: this.jwtSecret });
+
       request.user = {
         id: payload.sub,
         email: payload.email,
@@ -57,40 +62,25 @@ export class JwtAuthGuard implements CanActivate {
         exp: payload.exp,
       };
       return true;
-    } catch (error) {
-      console.log('Unauthorized error: ', error);
-      throw new UnauthorizedException();
+    } catch {
+      throw new UnauthorizedException('Invalid or expired token');
     }
   }
 
   private extractTokenFromHeader(request: FastifyRequest): string | undefined {
     const authHeader = request.headers?.authorization;
+    if (!authHeader) return undefined;
 
-    if (!authHeader) {
-      console.log('No authorization header found');
+    const spaceIdx = authHeader.indexOf(' ');
+    if (spaceIdx === -1) return authHeader; // plain token, no prefix
+
+    const scheme = authHeader.slice(0, spaceIdx).toLowerCase();
+    if (scheme !== 'bearer') {
+      this.logger.warn(`Unsupported auth scheme: ${scheme}`);
       return undefined;
     }
 
-    const parts = authHeader.split(' ');
-    let token: string | undefined;
-
-    // Handle both "Bearer token" and plain "token"
-    if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
-      token = parts[1];
-    } else if (parts.length === 1) {
-      // If no "Bearer" prefix, use the whole string as token
-      token = parts[0];
-    } else {
-      console.log(`Invalid authorization header format: ${authHeader}`);
-      return undefined;
-    }
-
-    if (!token) {
-      console.log('Token is empty');
-      return undefined;
-    }
-
-    console.log('Token extracted successfully');
-    return token;
+    const token = authHeader.slice(spaceIdx + 1).trim();
+    return token.length > 0 ? token : undefined;
   }
 }

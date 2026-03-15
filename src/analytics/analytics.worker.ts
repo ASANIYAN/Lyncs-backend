@@ -118,8 +118,11 @@ export class AnalyticsWorker implements OnModuleInit, OnModuleDestroy {
         .execute();
     }
 
-    for (const id of ackIds) {
-      await this.redisService.ackMessage(this.streamName, this.groupName, id);
+    // Single batched xack — one Redis round-trip instead of N
+    if (ackIds.length > 0) {
+      await this.redisService
+        .getClient()
+        .xack(this.streamName, this.groupName, ...ackIds);
     }
   }
 

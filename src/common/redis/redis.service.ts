@@ -20,6 +20,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.configService.getOrThrow<string>('REDIS_URL'),
       {
         maxRetriesPerRequest: 3,
+        enableReadyCheck: true,
+        lazyConnect: false,
+        keepAlive: 30000,
+        connectTimeout: 5000,
+        // Exponential back-off — avoids thundering herd on Redis restart
+        retryStrategy: (times: number) => Math.min(times * 50, 2000),
       },
     );
 
@@ -91,6 +97,31 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   // Atomic increment for Phase 3: Rate Limiting
   async incr(key: string): Promise<number> {
     return await this.client.incr(key);
+  }
+
+  /**
+   * Fetch multiple keys in a single round-trip (pipelining).
+   * Returns an array in the same order as the input keys;
+   * entries for missing keys are null.
+   */
+  async mget(keys: string[]): Promise<Array<string | null>> {
+    if (keys.length === 0) return [];
+    return this.client.mget(...keys);
+  }
+
+  /**
+   * Set multiple key/value pairs with the same TTL in a single pipeline.
+   * Useful for warming multiple cache entries at once.
+   */
+  async mset(
+    entries: Array<{ key: string; value: string; ttl: number }>,
+  ): Promise<void> {
+    if (entries.length === 0) return;
+    const pipeline = this.client.pipeline();
+    for (const { key, value, ttl } of entries) {
+      pipeline.set(key, value, 'EX', ttl);
+    }
+    await pipeline.exec();
   }
 
   // -- Stream helpers --

@@ -11,6 +11,7 @@ import { SafetyService } from './safety.service';
 import { RedisService } from '../common/redis/redis.service';
 import { UrlNormalizerService } from './url-normalizer.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { User } from '../auth/dto/entities/user.entity';
 import type { Repository } from 'typeorm';
 
 type UrlRepositoryMock = Pick<Repository<Url>, 'findOne' | 'create' | 'save'>;
@@ -20,6 +21,32 @@ type AuthUser = {
   iat: number;
   exp: number;
 };
+
+// Helper factory to create mock Url objects with all required fields
+function createMockUrl(overrides: Partial<Url> = {}): Url {
+  return {
+    id: '1',
+    short_code: 'abc123',
+    original_url: 'http://google.com',
+    normalized_url: 'https://google.com',
+    url_hash: 'hash1',
+    user: {
+      id: '1',
+      email: 'test@example.com',
+      password: 'hashed',
+      created_at: new Date(),
+      is_active: true,
+      urls: [],
+    } as User,
+    created_at: new Date(),
+    expires_at: new Date(),
+    is_active: true,
+    click_count: 0,
+    safety_status: 'pending',
+    last_checked_at: new Date(),
+    ...overrides,
+  } as Url;
+}
 
 describe('UrlService', () => {
   let service: UrlService;
@@ -58,7 +85,14 @@ describe('UrlService', () => {
         },
         {
           provide: RedisService,
-          useValue: { get: jest.fn(), set: jest.fn(), getClient: jest.fn() },
+          useValue: {
+            get: jest.fn(),
+            set: jest.fn(),
+            getClient: jest.fn().mockReturnValue({
+              del: jest.fn().mockResolvedValue(1),
+              keys: jest.fn().mockResolvedValue([]),
+            }),
+          },
         },
         {
           provide: UrlNormalizerService,
@@ -94,51 +128,17 @@ describe('UrlService', () => {
       hash: 'hash1',
     });
     generator.generate.mockReturnValue('abc123');
-    repo.findOne
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null);
-    repo.create.mockReturnValue({
-      id: '1',
-      short_code: 'abc123',
-      original_url: 'http://google.com',
-      user: {
-        id: '1',
-        email: 'test@example.com',
-        password: 'hashed',
-        created_at: new Date(),
-        is_active: true,
-        urls: [],
-      },
-      created_at: new Date(),
-      expires_at: new Date(),
-      is_active: true,
-      click_count: 0,
-      safety_status: 'pending',
-    } as Url);
-    repo.save.mockResolvedValue({
-      id: '1',
-      short_code: 'abc123',
-      original_url: 'http://google.com',
-      user: {
-        id: '1',
-        email: 'test@example.com',
-        password: 'hashed',
-        created_at: new Date(),
-        is_active: true,
-        urls: [],
-      },
-      created_at: new Date(),
-      expires_at: new Date(),
-      is_active: true,
-      click_count: 0,
-      safety_status: 'pending',
-    } as Url);
+    repo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    const mockUrl = createMockUrl();
+    repo.create.mockReturnValue(mockUrl);
+    repo.save.mockResolvedValue(mockUrl);
 
     const result = await service.create('http://google.com', mockUser);
     expect(result.url.short_code).toBe('abc123');
     expect(result.isNew).toBe(true);
     expect(repo.findOne).toHaveBeenCalledTimes(2);
-    expect(analyticsService.queueSafetyCheck).toHaveBeenCalledTimes(1);
+    expect(analyticsService.queueSafetyCheck.mock.calls).toHaveLength(1);
   });
 
   it('should retry if a collision occurs', async () => {
@@ -149,63 +149,22 @@ describe('UrlService', () => {
     });
     generator.generate.mockReturnValueOnce('collid').mockReturnValue('unique');
 
+    const collidingUrl = createMockUrl({
+      id: 'old',
+      short_code: 'collid',
+      original_url: 'http://example.com',
+    });
+    const uniqueUrl = createMockUrl({
+      id: '2',
+      short_code: 'unique',
+    });
+
     repo.findOne
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: 'old',
-        short_code: 'collid',
-        original_url: 'http://example.com',
-        user: {
-          id: '1',
-          email: 'test@example.com',
-          password: 'hashed',
-          created_at: new Date(),
-          is_active: true,
-          urls: [],
-        },
-        created_at: new Date(),
-        expires_at: new Date(),
-        is_active: true,
-        click_count: 0,
-        safety_status: 'pending',
-      } as Url)
+      .mockResolvedValueOnce(collidingUrl)
       .mockResolvedValue(null);
-    repo.create.mockReturnValue({
-      id: '2',
-      short_code: 'unique',
-      original_url: 'http://google.com',
-      user: {
-        id: '1',
-        email: 'test@example.com',
-        password: 'hashed',
-        created_at: new Date(),
-        is_active: true,
-        urls: [],
-      },
-      created_at: new Date(),
-      expires_at: new Date(),
-      is_active: true,
-      click_count: 0,
-      safety_status: 'pending',
-    } as Url);
-    repo.save.mockResolvedValue({
-      id: '2',
-      short_code: 'unique',
-      original_url: 'http://google.com',
-      user: {
-        id: '1',
-        email: 'test@example.com',
-        password: 'hashed',
-        created_at: new Date(),
-        is_active: true,
-        urls: [],
-      },
-      created_at: new Date(),
-      expires_at: new Date(),
-      is_active: true,
-      click_count: 0,
-      safety_status: 'pending',
-    } as Url);
+    repo.create.mockReturnValue(uniqueUrl);
+    repo.save.mockResolvedValue(uniqueUrl);
 
     const result = await service.create('http://google.com', mockUser);
 
@@ -220,26 +179,14 @@ describe('UrlService', () => {
       hash: 'hash3',
     });
     generator.generate.mockReturnValue('always-colliding');
-    repo.findOne
-      .mockResolvedValueOnce(null)
-      .mockResolvedValue({
+
+    const collidingUrl = createMockUrl({
       id: 'existing',
       short_code: 'always-colliding',
       original_url: 'http://example.com',
-      user: {
-        id: '1',
-        email: 'test@example.com',
-        password: 'hashed',
-        created_at: new Date(),
-        is_active: true,
-        urls: [],
-      },
-      created_at: new Date(),
-      expires_at: new Date(),
-      is_active: true,
-      click_count: 0,
-      safety_status: 'pending',
-      } as Url);
+    });
+
+    repo.findOne.mockResolvedValueOnce(null).mockResolvedValue(collidingUrl);
 
     await expect(service.create('http://google.com', mockUser)).rejects.toThrow(
       InternalServerErrorException,

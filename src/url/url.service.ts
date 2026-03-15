@@ -129,6 +129,12 @@ export class UrlService {
             url: saved.original_url,
             queuedAt: Date.now(),
           });
+          // Bust dashboard + profile caches — counts changed
+          this.bustDashboardCache(userId).catch(() => {});
+          this.redisService
+            .getClient()
+            .del(`profile:${userId}`)
+            .catch(() => {});
           return { url: saved, isNew: true };
         } catch (error: unknown) {
           const errorMsg =
@@ -175,6 +181,27 @@ export class UrlService {
       throw new InternalServerErrorException('Invalid user information');
     }
 
+    // Only cache simple, non-search pages to avoid stale filtered results
+    const isCacheable = !search && page <= 5;
+    const cacheKey = `dashboard:${userId}:p${page}:l${limit}:s${status ?? 'all'}:sb${sortBy}:so${sortOrder}`;
+    const DASHBOARD_TTL = 15; // seconds — short enough to feel live
+
+    if (isCacheable) {
+      try {
+        const cached = await this.redisService.get(cacheKey);
+        if (cached) {
+          return JSON.parse(cached) as {
+            data: Url[];
+            total: number;
+            page: number;
+            lastPage: number;
+          };
+        }
+      } catch {
+        // cache miss — fall through to DB
+      }
+    }
+
     try {
       const query = this.urlRepository
         .createQueryBuilder('url')
@@ -194,16 +221,37 @@ export class UrlService {
         .take(limit)
         .getManyAndCount();
 
-      return {
+      const result = {
         data,
         total,
         page,
         lastPage: Math.ceil(total / limit),
       };
+
+      if (isCacheable) {
+        this.redisService
+          .set(cacheKey, JSON.stringify(result), DASHBOARD_TTL)
+          .catch(() => {});
+      }
+
+      return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Error fetching urls by user: ${errorMsg}`);
       throw new InternalServerErrorException('Failed to fetch dashboard data');
+    }
+  }
+
+  /** Bust all cached dashboard pages for a user (called on create/delete). */
+  private async bustDashboardCache(userId: string): Promise<void> {
+    try {
+      const client = this.redisService.getClient();
+      const keys = await client.keys(`dashboard:${userId}:*`);
+      if (keys.length > 0) {
+        await client.del(...keys);
+      }
+    } catch {
+      // non-critical — stale cache will expire naturally
     }
   }
 
@@ -224,6 +272,13 @@ export class UrlService {
     url.is_active = false;
     await this.urlRepository.save(url);
     await this.redisService.getClient().del(`url:${shortCode}`);
+    // Bust dashboard + profile caches — urlCount changed
+    this.bustDashboardCache(userId).catch(() => {});
+    this.redisService
+
+      .getClient()
+      .del(`profile:${userId}`)
+      .catch(() => {});
   }
 
   private applyDashboardFilters(

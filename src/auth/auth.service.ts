@@ -18,7 +18,6 @@ import { RegisterDto } from './dto/register.dto';
 import { validateAndSanitizePassword } from './utils/password.validator';
 import { User } from './dto/entities/user.entity';
 import { RefreshToken } from './dto/entities/refresh-token.entity';
-import { Url } from '../url/entities/url.entity';
 
 @Injectable()
 export class AuthService {
@@ -30,8 +29,6 @@ export class AuthService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepository: Repository<RefreshToken>,
-    @InjectRepository(Url)
-    private readonly urlRepository: Repository<Url>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
@@ -111,7 +108,8 @@ export class AuthService {
       await this.userRepository.save(user);
       return { message: 'User registered successfully' };
     } catch (error) {
-      console.log('Error registering:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Registration failed: ${msg}`);
       throw new InternalServerErrorException('Registration failed');
     }
   }
@@ -164,9 +162,19 @@ export class AuthService {
         // Store in Redis with the specific TTL
         await this.redisService.set(`bl_${token}`, 'revoked', remainingTime);
       }
+
+      // Bust the profile cache so the next GET /auth/profile re-fetches from DB
+      const decoded2 = this.jwtService.decode(token);
+      const sub =
+        decoded2 && typeof decoded2 === 'object' && 'sub' in decoded2
+          ? (decoded2 as { sub: string }).sub
+          : null;
+      if (sub) {
+        await this.redisService.getClient().del(`profile:${sub}`);
+      }
     } catch (error) {
-      console.log('error: ', error);
-      this.logger.error(`Logout failed for token: ${token}`);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Logout failed: ${msg}`);
     }
   }
 
@@ -216,44 +224,56 @@ export class AuthService {
   }
 
   async getProfile(userId: string) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new UnauthorizedException('User not found');
+    const cacheKey = `profile:${userId}`;
+    const PROFILE_TTL = 30;
+
+    try {
+      const cached = await this.redisService.get(cacheKey);
+      if (cached) return JSON.parse(cached) as Record<string, unknown>;
+    } catch {
+      // cache miss — fall through
     }
 
-    const urlCount = await this.urlRepository.count({
-      where: { user: { id: userId }, is_active: true },
-    });
-
-    const totalClicksRaw = await this.urlRepository
-      .createQueryBuilder('url')
-      .select('COALESCE(SUM(url.click_count), 0)', 'total')
-      .innerJoin('url.user', 'user')
+    // Single LEFT JOIN aggregation — one query plan, one round-trip.
+    // Avoids two correlated sub-selects that each scan the urls table independently.
+    const row = await this.userRepository
+      .createQueryBuilder('user')
+      .select('user.id', 'id')
+      .addSelect('user.email', 'email')
+      .addSelect('user.created_at', 'createdAt')
+      .addSelect(
+        'COUNT(DISTINCT CASE WHEN u.is_active = true THEN u.id END)',
+        'urlCount',
+      )
+      .addSelect('COALESCE(SUM(u.click_count), 0)', 'totalClicks')
+      .leftJoin('urls', 'u', 'u.user_id = user.id')
       .where('user.id = :userId', { userId })
-      .getRawOne<{ total: string }>();
+      .groupBy('user.id')
+      .addGroupBy('user.email')
+      .addGroupBy('user.created_at')
+      .getRawOne<{
+        id: string;
+        email: string;
+        createdAt: Date;
+        urlCount: string;
+        totalClicks: string;
+      }>();
 
-    const maxRequests = this.configService.get<number>(
-      'MAX_URLS_PER_HOUR',
-      100,
-    );
-    const usedRaw =
-      (await this.redisService.get(`ratelimit:${userId}:create_url`)) || '0';
-    const used = parseInt(usedRaw, 10) || 0;
+    if (!row) throw new UnauthorizedException('User not found');
 
-    return {
-      id: user.id,
-      email: user.email,
-      createdAt: user.created_at,
-      urlCount,
-      totalClicks: parseInt(totalClicksRaw?.total || '0', 10),
-      rateLimitStatus: {
-        action: 'create_url',
-        windowSeconds: 3600,
-        limit: maxRequests,
-        used,
-        remaining: Math.max(0, maxRequests - used),
-      },
+    const profile = {
+      id: row.id,
+      email: row.email,
+      createdAt: row.createdAt,
+      urlCount: parseInt(row.urlCount, 10),
+      totalClicks: parseInt(row.totalClicks, 10),
     };
+
+    this.redisService
+      .set(cacheKey, JSON.stringify(profile), PROFILE_TTL)
+      .catch(() => {});
+
+    return profile;
   }
 
   private async persistRefreshToken(

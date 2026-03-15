@@ -87,6 +87,15 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog 511
+      --timeout 0
+      --tcp-keepalive 300
     ports:
       - '${REDIS_PORT:-6379}:6379'
     healthcheck:

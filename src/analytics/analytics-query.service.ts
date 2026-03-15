@@ -7,17 +7,33 @@ import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Click } from './entities/click.entity';
 import { Url } from '../url/entities/url.entity';
+import { RedisService } from '../common/redis/redis.service';
 
 @Injectable()
 export class AnalyticsQueryService {
+  private readonly ANALYTICS_TTL = 60; // seconds
+
   constructor(
     @InjectRepository(Click)
     private readonly clickRepo: Repository<Click>,
     @InjectRepository(Url)
     private readonly urlRepo: Repository<Url>,
+    private readonly redisService: RedisService,
   ) {}
 
   async getAnalytics(shortCode: string, userId: string, timeRange = '7d') {
+    const cacheKey = `analytics:${shortCode}:${timeRange}`;
+
+    // Serve from cache when available
+    try {
+      const cached = await this.redisService.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached) as Record<string, unknown>;
+      }
+    } catch {
+      // cache miss — fall through
+    }
+
     const url = await this.urlRepo.findOne({
       where: { short_code: shortCode },
       relations: ['user'],
@@ -56,7 +72,7 @@ export class AnalyticsQueryService {
       this.getRecentClicks(shortCode, 20),
     ]);
 
-    return {
+    const result = {
       shortCode,
       totalClicks,
       uniqueVisitors,
@@ -69,6 +85,13 @@ export class AnalyticsQueryService {
       operatingSystems,
       recentClicks,
     };
+
+    // Cache result — fire-and-forget, never block the response
+    this.redisService
+      .set(cacheKey, JSON.stringify(result), this.ANALYTICS_TTL)
+      .catch(() => {});
+
+    return result;
   }
 
   private calculateStartDate(timeRange: string): Date {
