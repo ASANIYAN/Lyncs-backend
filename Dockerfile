@@ -32,11 +32,8 @@ ENV PORT=${PORT}
 COPY package*.json ./
 RUN npm ci --only=production
 
-# Copy compiled code from builder
+# Copy compiled code from builder (includes compiled migrations)
 COPY --from=builder /app/dist ./dist
-
-# Copy migrations (needed for typeorm migration:run)
-COPY --from=builder /app/src/migrations ./dist/migrations
 
 # Copy startup script
 COPY scripts/start-production.sh ./scripts/
