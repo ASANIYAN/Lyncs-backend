@@ -25,6 +25,7 @@ export class AppController {
       port,
     };
   }
+
   @Get('health')
   @ApiOperation({ summary: 'System Health Check' })
   @ApiResponse({ status: 200, description: 'Service is healthy' })

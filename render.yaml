@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: url-shortener-api
+    runtime: docker
+    plan: free
+    region: oregon # or singapore, frankfurt, ohio
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Health check endpoint
+    healthCheckPath: /health
+
+    # Environment variables
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 10000 # Render uses port 10000 internally
+
+      - key: DATABASE_URL
+        sync: false # Will set this as secret via CLI
+
+      - key: REDIS_URL
+        sync: false # Will set this as secret via CLI
+
+      - key: JWT_ACCESS_SECRET
+        generateValue: true # Auto-generates random secret
+
+      - key: JWT_REFRESH_SECRET
+        generateValue: true # Auto-generates random secret
+
+      - key: AUTH_SALT_ROUNDS
+        value: 10
+
+      - key: MAX_URLS_PER_HOUR
+        value: 100

@@ -14,6 +14,8 @@ async function bootstrap() {
     new FastifyAdapter({ logger: true, trustProxy: true }),
   );
 
+  app.enableCors();
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -48,7 +50,7 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   if (enableHttp) {
-    const port = process.env.PORT ?? 3000;
+    const port = parseInt(process.env.PORT || '3000', 10);
     await app.listen(port, '0.0.0.0');
     console.log(`Server is listening at http://localhost:${port}`);
   } else {
