@@ -26,14 +26,32 @@ if (!process.env.DB_PASSWORD) {
   }
 }
 
-export default new DataSource({
-  type: 'postgres',
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  username: process.env.DB_USERNAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  entities: [User, RefreshToken, BlockedDomain, Url, Click, RateLimit],
-  migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
-  synchronize: false,
-});
+// Support both DATABASE_URL (production/Render) and individual vars (local dev)
+const databaseUrl = process.env.DATABASE_URL;
+
+export default new DataSource(
+  databaseUrl
+    ? {
+        type: 'postgres',
+        url: databaseUrl,
+        entities: [User, RefreshToken, BlockedDomain, Url, Click, RateLimit],
+        migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
+        synchronize: false,
+        // Required for Render/Heroku SSL connections
+        ssl:
+          process.env.NODE_ENV === 'production'
+            ? { rejectUnauthorized: false }
+            : false,
+      }
+    : {
+        type: 'postgres',
+        host: process.env.DB_HOST,
+        port: parseInt(process.env.DB_PORT || '5432', 10),
+        username: process.env.DB_USERNAME,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        entities: [User, RefreshToken, BlockedDomain, Url, Click, RateLimit],
+        migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
+        synchronize: false,
+      },
+);

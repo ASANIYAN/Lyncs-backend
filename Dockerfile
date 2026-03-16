@@ -35,10 +35,17 @@ RUN npm ci --only=production
 # Copy compiled code from builder
 COPY --from=builder /app/dist ./dist
 
+# Copy migrations (needed for typeorm migration:run)
+COPY --from=builder /app/src/migrations ./dist/migrations
+
+# Copy startup script
+COPY scripts/start-production.sh ./scripts/
+RUN chmod +x ./scripts/start-production.sh
+
 # Security: Don't run as root
 USER node
 
 # Fastify requires binding to 0.0.0.0 in Docker
 EXPOSE ${PORT}
 
-CMD ["node", "dist/main.js"]
+CMD ["./scripts/start-production.sh"]
