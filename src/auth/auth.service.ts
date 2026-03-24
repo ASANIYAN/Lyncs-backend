@@ -85,7 +85,11 @@ export class AuthService {
     );
 
     const t1 = performance.now();
-    await this.persistRefreshToken(user, refreshToken);
+    this.persistRefreshToken(user, refreshToken).catch(err =>
+      this.logger.error(
+        `Failed to persist refresh token: ${err instanceof Error ? err.message : err}`,
+      ),
+    );
     this.logger.debug(
       `[generateTokens] persistRefreshToken: ${parseFloat((performance.now() - t1).toFixed(2))}ms`,
     );
