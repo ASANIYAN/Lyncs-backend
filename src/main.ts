@@ -6,6 +6,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { PerformanceInterceptor } from './common/interceptors/performance.interceptor';
 
 async function bootstrap() {
   const enableHttp = process.env.ENABLE_HTTP !== 'false';
@@ -23,6 +24,8 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  app.useGlobalInterceptors(new PerformanceInterceptor());
 
   const config = new DocumentBuilder()
     .setTitle('URL Shortener API')

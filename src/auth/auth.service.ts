@@ -69,6 +69,7 @@ export class AuthService {
   async generateTokens(user: User) {
     const payload = { sub: user.id, email: user.email };
 
+    const t0 = performance.now();
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         expiresIn: '30m', // Short-lived Access Token
@@ -79,8 +80,16 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_SECRET,
       }),
     ]);
+    this.logger.debug(
+      `[generateTokens] jwt_sign: ${parseFloat((performance.now() - t0).toFixed(2))}ms`,
+    );
 
+    const t1 = performance.now();
     await this.persistRefreshToken(user, refreshToken);
+    this.logger.debug(
+      `[generateTokens] persistRefreshToken: ${parseFloat((performance.now() - t1).toFixed(2))}ms`,
+    );
+
     return { accessToken, refreshToken };
   }
 
@@ -118,22 +127,34 @@ export class AuthService {
     loginDto: LoginDto,
   ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
     const { email, password } = loginDto;
+    const timings: Record<string, number> = {};
 
+    const t0 = performance.now();
     const user = await this.userRepository.findOne({
       where: { email },
       select: ['id', 'email', 'password'], // Explicitly select password
     });
+    timings['db_findUser'] = parseFloat((performance.now() - t0).toFixed(2));
+
     if (!user) {
+      this.logger.debug('[login] timings ms:', timings);
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    const t1 = performance.now();
     const isPasswordValid = await bcrypt.compare(password, user.password);
+    timings['bcrypt_compare'] = parseFloat((performance.now() - t1).toFixed(2));
+
     if (!isPasswordValid) {
+      this.logger.debug('[login] timings ms:', timings);
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    const t2 = performance.now();
     const { accessToken, refreshToken } = await this.generateTokens(user);
+    timings['generateTokens'] = parseFloat((performance.now() - t2).toFixed(2));
 
+    this.logger.debug('[login] timings ms:', timings);
     return { accessToken, refreshToken, expiresIn: 1800 };
   }
 
