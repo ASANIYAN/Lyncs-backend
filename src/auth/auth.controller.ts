@@ -14,6 +14,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiBody,
 } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { AuthService } from './auth.service';
@@ -66,6 +67,7 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate refresh token and issue new tokens' })
+  @ApiBody({ type: RefreshTokenDto })
   @ApiResponse({ status: 200, description: 'Tokens refreshed successfully' })
   @ApiResponse({
     status: 401,
