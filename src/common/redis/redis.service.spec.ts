@@ -19,6 +19,8 @@ describe('RedisService Stream Helpers', () => {
       xpending: jest.fn(),
     };
     (service as any).client = client;
+    // readFromStream uses the dedicated blockingClient — wire it to the same mock
+    (service as any).blockingClient = client;
   });
 
   it('should add flattened events to stream', async () => {

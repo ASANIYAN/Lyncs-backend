@@ -78,33 +78,44 @@ export class SafetyWorker implements OnModuleInit, OnModuleDestroy {
 
       const result = await this.safetyService.checkUrl(String(originalUrl));
 
-      if (result.skipped) {
-        // URL was not checked — mark as unchecked so it can be reprocessed
-        await this.urlRepository.update(
-          { short_code: String(shortCode) },
-          { safety_checked: false, safety_checked_at: undefined },
-        );
-      } else {
-        // URL was checked — persist the result
-        await this.urlRepository.update(
-          { short_code: String(shortCode) },
-          {
-            safety_checked: true,
-            safety_checked_at: new Date(),
-            is_active: result.safe,
-            safety_status: result.safe ? 'safe' : 'unsafe',
-            last_checked_at: new Date(),
-          },
+      try {
+        if (result.skipped) {
+          // URL was not checked — mark as unchecked so it can be reprocessed
+          await this.urlRepository.update(
+            { short_code: String(shortCode) },
+            { safety_checked: false, safety_checked_at: undefined },
+          );
+        } else {
+          // URL was checked — persist the result
+          await this.urlRepository.update(
+            { short_code: String(shortCode) },
+            {
+              safety_checked: true,
+              safety_checked_at: new Date(),
+              is_active: result.safe,
+              safety_status: result.safe ? 'safe' : 'unsafe',
+              last_checked_at: new Date(),
+            },
+          );
+        }
+        await this.redisService.getClient().del(`url:${String(shortCode)}`);
+      } catch (dbError: unknown) {
+        // DB write failed — log but still ack so the message is not requeued
+        // indefinitely (a DB error on the same message will always fail again).
+        this.logger.error(
+          `Failed to persist safety result for ${messageId}`,
+          dbError,
         );
       }
 
-      await this.redisService.getClient().del(`url:${String(shortCode)}`);
+      // Always ack after checkUrl succeeds, even if the DB write failed.
       await this.redisService.ackMessage(
         this.streamName,
         this.groupName,
         messageId,
       );
     } catch (error: unknown) {
+      // checkUrl itself threw — do not ack; the message will be redelivered.
       this.logger.error(`Failed to process safety message ${messageId}`, error);
     }
   }
