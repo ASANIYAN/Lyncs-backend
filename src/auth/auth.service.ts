@@ -116,7 +116,7 @@ export class AuthService {
 
   async login(
     loginDto: LoginDto,
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
     const { email, password } = loginDto;
 
     const user = await this.userRepository.findOne({
@@ -134,7 +134,7 @@ export class AuthService {
 
     const { accessToken, refreshToken } = await this.generateTokens(user);
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, expiresIn: 1800 };
   }
 
   async logout(token: string): Promise<void> {

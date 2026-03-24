@@ -18,3 +18,23 @@ export class LoginDto {
   @IsNotEmpty()
   password: string;
 }
+
+export class LoginResponseDto {
+  @ApiProperty({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    description: 'Short-lived JWT access token (valid for 30 minutes)',
+  })
+  accessToken: string;
+
+  @ApiProperty({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    description: 'Long-lived JWT refresh token (valid for 7 days)',
+  })
+  refreshToken: string;
+
+  @ApiProperty({
+    example: 1800,
+    description: 'Access token lifetime in seconds (1800 = 30 minutes)',
+  })
+  expiresIn: number;
+}
