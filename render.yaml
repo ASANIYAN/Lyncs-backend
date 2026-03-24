@@ -36,3 +36,6 @@ services:
 
       - key: MAX_URLS_PER_HOUR
         value: 100
+
+      - key: GOOGLE_WEB_RISK_API_KEY
+        sync: false # Set via Render dashboard or CLI as a secret

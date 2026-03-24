@@ -16,7 +16,4 @@ export default () => ({
     accessExpiry: parseInt(process.env.JWT_ACCESS_EXPIRY || '1800', 10),
     refreshExpiry: parseInt(process.env.JWT_REFRESH_EXPIRY || '604800', 10),
   },
-  safety: {
-    googleSafeBrowsingApiKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY,
-  },
 });

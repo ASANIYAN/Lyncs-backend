@@ -35,6 +35,12 @@ export class Url {
   @Column({ default: true })
   is_active: boolean; // Soft delete support
 
+  @Column({ default: false })
+  safety_checked: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  safety_checked_at: Date;
+
   @Column({ type: 'bigint', default: 0 })
   click_count: number; // Denormalized for dashboard speed
 

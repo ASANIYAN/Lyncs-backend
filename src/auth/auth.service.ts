@@ -251,16 +251,30 @@ export class AuthService {
   async getProfile(userId: string) {
     const cacheKey = `profile:${userId}`;
     const PROFILE_TTL = 30;
+    const timings: Record<string, number> = {};
+    const t = (label: string, since: number) => {
+      timings[label] = parseFloat((performance.now() - since).toFixed(2));
+    };
 
+    let s = performance.now();
     try {
       const cached = await this.redisService.get(cacheKey);
-      if (cached) return JSON.parse(cached) as Record<string, unknown>;
+      t('redis_read', s);
+
+      if (cached) {
+        timings['cache_hit'] = 1;
+        this.logger.debug(
+          `[getProfile] timings ms: ${JSON.stringify(timings)}`,
+        );
+        return JSON.parse(cached) as Record<string, unknown>;
+      }
     } catch {
+      t('redis_read', s);
+      timings['cache_hit'] = 0;
       // cache miss — fall through
     }
 
-    // Single LEFT JOIN aggregation — one query plan, one round-trip.
-    // Avoids two correlated sub-selects that each scan the urls table independently.
+    s = performance.now();
     const row = await this.userRepository
       .createQueryBuilder('user')
       .select('user.id', 'id')
@@ -283,8 +297,12 @@ export class AuthService {
         urlCount: string;
         totalClicks: string;
       }>();
+    t('db_aggregation', s);
 
-    if (!row) throw new UnauthorizedException('User not found');
+    if (!row) {
+      this.logger.debug(`[getProfile] timings ms: ${JSON.stringify(timings)}`);
+      throw new UnauthorizedException('User not found');
+    }
 
     const profile = {
       id: row.id,
@@ -294,10 +312,17 @@ export class AuthService {
       totalClicks: parseInt(row.totalClicks, 10),
     };
 
+    s = performance.now();
     this.redisService
       .set(cacheKey, JSON.stringify(profile), PROFILE_TTL)
+      .then(() => {
+        this.logger.debug(
+          `[getProfile] redis_write: ${(performance.now() - s).toFixed(2)}ms`,
+        );
+      })
       .catch(() => {});
 
+    this.logger.debug(`[getProfile] timings ms: ${JSON.stringify(timings)}`);
     return profile;
   }
 

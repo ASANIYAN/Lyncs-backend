@@ -12,22 +12,33 @@ import { ConfigService } from '@nestjs/config';
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private client: Redis;
+  /** Dedicated connection for XREADGROUP BLOCK — no commandTimeout so blocking reads never fire the timer */
+  private blockingClient: Redis;
 
   constructor(private configService: ConfigService) {}
 
   async onModuleInit() {
-    this.client = new Redis(
-      this.configService.getOrThrow<string>('REDIS_URL'),
-      {
-        maxRetriesPerRequest: 3,
-        enableReadyCheck: true,
-        lazyConnect: false,
-        keepAlive: 30000,
-        connectTimeout: 5000,
-        // Exponential back-off — avoids thundering herd on Redis restart
-        retryStrategy: (times: number) => Math.min(times * 50, 2000),
-      },
-    );
+    const redisUrl = this.configService.getOrThrow<string>('redis.url');
+    const sharedOptions = {
+      enableReadyCheck: true,
+      lazyConnect: false,
+      keepAlive: 30000,
+      connectTimeout: 5000,
+      retryStrategy: (times: number) => Math.min(times * 50, 2000),
+    };
+
+    // Standard client — commandTimeout caps non-blocking ops at 3s
+    this.client = new Redis(redisUrl, {
+      ...sharedOptions,
+      maxRetriesPerRequest: 3,
+      commandTimeout: 3000,
+    });
+
+    // Blocking client — no commandTimeout so XREADGROUP BLOCK can wait its full blockMs
+    this.blockingClient = new Redis(redisUrl, {
+      ...sharedOptions,
+      maxRetriesPerRequest: 0, // don't retry blocking reads; the loop handles reconnection
+    });
 
     this.client.on('error', err => {
       this.logger.error('Redis connection error', err);
@@ -35,6 +46,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     this.client.on('connect', () => {
       this.logger.log('Redis connected');
+    });
+
+    this.blockingClient.on('error', err => {
+      this.logger.error('Redis blocking client error', err);
     });
 
     await this.ensureStreamsExist();
@@ -65,6 +80,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     await this.client.quit();
+    await this.blockingClient.quit();
   }
 
   async expire(key: string, seconds: number): Promise<void> {
@@ -149,7 +165,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     count = 100,
     blockMs = 5000,
   ): Promise<Array<{ id: string; data: Record<string, any> }>> {
-    const res = (await this.client.xreadgroup(
+    const res = (await this.blockingClient.xreadgroup(
       'GROUP',
       groupName,
       consumerName,

@@ -65,8 +65,8 @@ export class SafetyWorker implements OnModuleInit, OnModuleDestroy {
 
   private async processMessage(messageId: string, data: Record<string, any>) {
     try {
-      const shortCode = data.shortCode || data.short_code;
-      const originalUrl = data.url || data.original_url;
+      const shortCode = String(data.shortCode ?? data.short_code ?? '');
+      const originalUrl = String(data.url ?? data.original_url ?? '');
       if (!shortCode || !originalUrl) {
         await this.redisService.ackMessage(
           this.streamName,
@@ -76,16 +76,28 @@ export class SafetyWorker implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const status = await this.safetyService.checkUrlSafety(
-        String(originalUrl),
-      );
-      await this.urlRepository.update(
-        { short_code: String(shortCode) },
-        {
-          safety_status: status,
-          last_checked_at: new Date(),
-        },
-      );
+      const result = await this.safetyService.checkUrl(String(originalUrl));
+
+      if (result.skipped) {
+        // URL was not checked — mark as unchecked so it can be reprocessed
+        await this.urlRepository.update(
+          { short_code: String(shortCode) },
+          { safety_checked: false, safety_checked_at: undefined },
+        );
+      } else {
+        // URL was checked — persist the result
+        await this.urlRepository.update(
+          { short_code: String(shortCode) },
+          {
+            safety_checked: true,
+            safety_checked_at: new Date(),
+            is_active: result.safe,
+            safety_status: result.safe ? 'safe' : 'unsafe',
+            last_checked_at: new Date(),
+          },
+        );
+      }
+
       await this.redisService.getClient().del(`url:${String(shortCode)}`);
       await this.redisService.ackMessage(
         this.streamName,

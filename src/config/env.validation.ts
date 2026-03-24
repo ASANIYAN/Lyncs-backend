@@ -35,7 +35,7 @@ export const envValidationSchema = Joi.object({
 
   // Business Logic
   MAX_URLS_PER_HOUR: Joi.number().default(100),
-  GOOGLE_SAFE_BROWSING_API_KEY: Joi.string().allow('').optional(),
+  GOOGLE_WEB_RISK_API_KEY: Joi.string().allow('').optional(),
 }).custom((value, helpers) => {
   // Custom validation: Ensure at least one database connection method is provided
   const hasDatabaseUrl = !!value.DATABASE_URL;

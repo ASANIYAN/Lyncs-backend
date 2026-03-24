@@ -3,6 +3,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { envValidationSchema } from './config/env.validation';
+import configuration from './config/configuration';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from './common/redis/redis.module';
 import { AuthModule } from './auth/auth.module';
@@ -13,6 +14,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      load: [configuration],
       validationSchema: envValidationSchema,
       validationOptions: {
         allowUnknown: true,
