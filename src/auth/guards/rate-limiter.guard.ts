@@ -42,7 +42,7 @@ export class RateLimiterGuard implements CanActivate {
     private readonly redisService: RedisService,
     configService: ConfigService,
   ) {
-    this.maxRequests = configService.get<number>('MAX_URLS_PER_HOUR', 100);
+    this.maxRequests = configService.get<number>('MAX_URLS_PER_HOUR', 50);
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
