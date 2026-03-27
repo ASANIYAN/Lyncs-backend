@@ -9,14 +9,17 @@ import { AuthController } from './auth.controller';
 import { User } from './dto/entities/user.entity';
 import { RefreshToken } from './dto/entities/refresh-token.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { EmailOtp } from './dto/entities/email-otp.entity';
+import { MailerModule } from '../common/mailer/mailer.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, RefreshToken]),
+    TypeOrmModule.forFeature([User, RefreshToken, EmailOtp]),
     PassportModule,
     JwtModule.register({}),
     ConfigModule,
     RedisModule,
+    MailerModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],

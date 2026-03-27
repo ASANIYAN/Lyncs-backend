@@ -11,6 +11,7 @@ import {
 import { Url } from './url/entities/url.entity';
 import { Click } from './analytics/entities/click.entity';
 import { RateLimit } from './common/entities/rate-limit.entity';
+import { EmailOtp } from './auth/dto/entities/email-otp.entity';
 
 // TypeORM CLI does not bootstrap Nest ConfigModule, so load env files explicitly.
 if (!process.env.DB_PASSWORD) {
@@ -34,7 +35,15 @@ export default new DataSource(
     ? {
         type: 'postgres',
         url: databaseUrl,
-        entities: [User, RefreshToken, BlockedDomain, Url, Click, RateLimit],
+        entities: [
+          User,
+          RefreshToken,
+          BlockedDomain,
+          Url,
+          Click,
+          RateLimit,
+          EmailOtp,
+        ],
         migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
         synchronize: false,
         // Required for Render/Heroku SSL connections
@@ -50,7 +59,15 @@ export default new DataSource(
         username: process.env.DB_USERNAME,
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
-        entities: [User, RefreshToken, BlockedDomain, Url, Click, RateLimit],
+        entities: [
+          User,
+          RefreshToken,
+          BlockedDomain,
+          Url,
+          Click,
+          RateLimit,
+          EmailOtp,
+        ],
         migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
         synchronize: false,
       },

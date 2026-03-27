@@ -63,6 +63,34 @@ $ npm run migration:create
 $ npm run migration:generate
 ```
 
+## Email OTP configuration
+
+This project sends OTPs over SMTP. Use Mailtrap for dev/testing and Resend SMTP for production.
+
+### Mailtrap (dev/testing)
+
+```bash
+MAIL_HOST=sandbox.smtp.mailtrap.io
+MAIL_PORT=2525
+MAIL_SECURE=false
+MAIL_USER=your_mailtrap_username
+MAIL_PASS=your_mailtrap_password
+MAIL_FROM=dev@example.com
+```
+
+### Resend SMTP (production)
+
+```bash
+MAIL_HOST=smtp.resend.com
+MAIL_PORT=465
+MAIL_SECURE=true
+MAIL_USER=resend
+MAIL_PASS=your_resend_api_key
+MAIL_FROM=your_verified_sender@example.com
+```
+
+You can also use port `587` with `MAIL_SECURE=false` for STARTTLS if you prefer.
+
 ## Run tests
 
 ```bash
@@ -79,6 +107,17 @@ $ npm run test:cov
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+
+### Migrations on Render
+
+Render runs migrations because the Docker image starts with `scripts/start-production.sh`.
+That script runs:
+
+```bash
+node ./node_modules/typeorm/cli.js -d dist/data-source.js migration:run
+```
+
+before starting the app. So any new migrations are applied automatically on deploy.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
 

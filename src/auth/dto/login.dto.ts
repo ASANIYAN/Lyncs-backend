@@ -38,3 +38,17 @@ export class LoginResponseDto {
   })
   expiresIn: number;
 }
+
+export class LoginOtpRequiredDto {
+  @ApiProperty({
+    example: true,
+    description: 'Indicates that OTP verification is required to complete login',
+  })
+  otpRequired: true;
+
+  @ApiProperty({
+    example: 'OTP sent to email. Verify to complete login.',
+    description: 'User-facing message describing the next step',
+  })
+  message: string;
+}

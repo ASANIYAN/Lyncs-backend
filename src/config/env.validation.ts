@@ -32,9 +32,19 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_SECRET: Joi.string().min(32).required(),
   JWT_ACCESS_EXPIRY: Joi.number().default(1800),
   JWT_REFRESH_EXPIRY: Joi.number().default(604800),
+  OTP_TTL_SECONDS: Joi.number().default(600),
+  OTP_MAX_ATTEMPTS: Joi.number().default(5),
+
+  // Mailer (SMTP)
+  MAIL_HOST: Joi.string().required(),
+  MAIL_PORT: Joi.number().default(587),
+  MAIL_SECURE: Joi.boolean().default(false),
+  MAIL_USER: Joi.string().required(),
+  MAIL_PASS: Joi.string().required(),
+  MAIL_FROM: Joi.string().email().required(),
 
   // Business Logic
-  MAX_URLS_PER_HOUR: Joi.number().default(100),
+  MAX_URLS_PER_HOUR: Joi.number().default(50),
   GOOGLE_WEB_RISK_API_KEY: Joi.string().allow('').optional(),
 }).custom((value, helpers) => {
   // Custom validation: Ensure at least one database connection method is provided

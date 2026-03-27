@@ -35,7 +35,31 @@ services:
         value: 12
 
       - key: MAX_URLS_PER_HOUR
-        value: 100
+        value: 50
+
+      - key: OTP_TTL_SECONDS
+        value: 600
+
+      - key: OTP_MAX_ATTEMPTS
+        value: 5
+
+      - key: MAIL_HOST
+        sync: false # Mailtrap for dev / Resend for prod
+
+      - key: MAIL_PORT
+        sync: false
+
+      - key: MAIL_SECURE
+        sync: false
+
+      - key: MAIL_USER
+        sync: false
+
+      - key: MAIL_PASS
+        sync: false
+
+      - key: MAIL_FROM
+        sync: false
 
       - key: GOOGLE_WEB_RISK_API_KEY
         sync: false # Set via Render dashboard or CLI as a secret

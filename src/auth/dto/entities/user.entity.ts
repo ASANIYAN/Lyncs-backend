@@ -23,6 +23,21 @@ export class User {
   @CreateDateColumn()
   created_at: Date;
 
+  @Column('timestamp', { nullable: true })
+  email_verified_at: Date | null;
+
+  @Column('timestamp', { nullable: true })
+  last_login_at: Date | null;
+
+  @Column({ type: 'varchar', length: 45, nullable: true })
+  last_login_ip: string | null;
+
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  last_login_user_agent_hash: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  last_login_device_hash: string | null;
+
   @Column({ default: true })
   is_active: boolean;
 

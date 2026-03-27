@@ -1,5 +1,5 @@
 import * as bcrypt from 'bcrypt';
-import { createHash } from 'crypto';
+import { createHash, randomInt } from 'crypto';
 import {
   Injectable,
   InternalServerErrorException,
@@ -12,12 +12,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '../common/redis/redis.service';
+import { EmailService } from '../common/mailer/mailer.service';
 import { LoginDto } from './dto/login.dto';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { RegisterDto } from './dto/register.dto';
 import { validateAndSanitizePassword } from './utils/password.validator';
 import { User } from './dto/entities/user.entity';
 import { RefreshToken } from './dto/entities/refresh-token.entity';
+import { EmailOtp, OtpPurpose } from './dto/entities/email-otp.entity';
 
 @Injectable()
 export class AuthService {
@@ -29,9 +31,12 @@ export class AuthService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepository: Repository<RefreshToken>,
+    @InjectRepository(EmailOtp)
+    private readonly emailOtpRepository: Repository<EmailOtp>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
+    private readonly emailService: EmailService,
   ) {
     this.saltRounds = Number(this.configService.get('AUTH_SALT_ROUNDS', 12));
   }
@@ -116,6 +121,7 @@ export class AuthService {
       const user = this.userRepository.create({
         email,
         password: hashedPassword,
+        email_verified_at: new Date(),
       });
 
       await this.userRepository.save(user);
@@ -129,14 +135,24 @@ export class AuthService {
 
   async login(
     loginDto: LoginDto,
-  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+    device: { ip: string | null; userAgent: string | null },
+  ): Promise<
+    | { accessToken: string; refreshToken: string; expiresIn: number }
+    | { otpRequired: true; message: string }
+  > {
     const { email, password } = loginDto;
     const timings: Record<string, number> = {};
 
     const t0 = performance.now();
     const user = await this.userRepository.findOne({
       where: { email },
-      select: ['id', 'email', 'password'], // Explicitly select password
+      select: [
+        'id',
+        'email',
+        'password',
+        'last_login_device_hash',
+        'email_verified_at',
+      ], // Explicitly select password
     });
     timings['db_findUser'] = parseFloat((performance.now() - t0).toFixed(2));
 
@@ -154,9 +170,36 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    const deviceHash = this.computeDeviceHash(device.ip, device.userAgent);
+    const requiresOtp =
+      !!deviceHash && user.last_login_device_hash !== deviceHash;
+
+    if (requiresOtp) {
+      await this.requestOtp({
+        email: user.email,
+        purpose: 'login',
+        userId: user.id,
+        deviceHash,
+        ip: device.ip,
+        userAgent: device.userAgent,
+      });
+      this.logger.debug('[login] timings ms:', timings);
+      return {
+        otpRequired: true,
+        message: 'OTP sent to email. Verify to complete login.',
+      };
+    }
+
     const t2 = performance.now();
     const { accessToken, refreshToken } = await this.generateTokens(user);
     timings['generateTokens'] = parseFloat((performance.now() - t2).toFixed(2));
+
+    await this.updateLoginSignals(
+      user,
+      device.ip,
+      device.userAgent,
+      deviceHash,
+    );
 
     this.logger.debug('[login] timings ms:', timings);
     return { accessToken, refreshToken, expiresIn: 1800 };
@@ -343,5 +386,218 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private hashOtp(code: string): string {
+    return createHash('sha256').update(code).digest('hex');
+  }
+
+  private generateOtpCode(): string {
+    const n = randomInt(0, 1_000_000);
+    return n.toString().padStart(6, '0');
+  }
+
+  private hashUserAgent(userAgent: string | null): string | null {
+    if (!userAgent) return null;
+    return createHash('sha256').update(userAgent).digest('hex');
+  }
+
+  private computeDeviceHash(
+    ip: string | null,
+    userAgent: string | null,
+  ): string | null {
+    if (!ip || !userAgent) return null;
+    return createHash('sha256').update(`${ip}|${userAgent}`).digest('hex');
+  }
+
+  private async requestOtp(params: {
+    email: string;
+    purpose: OtpPurpose;
+    userId?: string;
+    deviceHash?: string | null;
+    ip?: string | null;
+    userAgent?: string | null;
+  }): Promise<void> {
+    const otpTtl = this.configService.get<number>('OTP_TTL_SECONDS', 600);
+    const code = this.generateOtpCode();
+    const codeHash = this.hashOtp(code);
+    const expiresAt = new Date(Date.now() + otpTtl * 1000);
+
+    await this.emailOtpRepository.delete({
+      email: params.email,
+      purpose: params.purpose,
+      consumed_at: IsNull(),
+    });
+
+    const entity = this.emailOtpRepository.create({
+      email: params.email,
+      user_id: params.userId ?? null,
+      purpose: params.purpose,
+      code_hash: codeHash,
+      expires_at: expiresAt,
+      consumed_at: null,
+      attempts: 0,
+      device_hash: params.deviceHash ?? null,
+      ip_address: params.ip ?? null,
+      user_agent_hash: this.hashUserAgent(params.userAgent ?? null),
+    });
+    await this.emailOtpRepository.save(entity);
+
+    await this.emailService.sendOtpEmail(params.email, code, params.purpose);
+  }
+
+  private async verifyOtp(params: {
+    email: string;
+    purpose: OtpPurpose;
+    code: string;
+    deviceHash?: string | null;
+  }): Promise<void> {
+    const maxAttempts = this.configService.get<number>('OTP_MAX_ATTEMPTS', 5);
+    const codeHash = this.hashOtp(params.code);
+    const now = new Date();
+
+    const otp = await this.emailOtpRepository.findOne({
+      where: {
+        email: params.email,
+        purpose: params.purpose,
+        consumed_at: IsNull(),
+      },
+      order: { created_at: 'DESC' },
+    });
+
+    if (!otp) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    if (otp.expires_at <= now) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    if (otp.device_hash && params.deviceHash !== otp.device_hash) {
+      throw new BadRequestException('OTP does not match this device');
+    }
+
+    if (otp.attempts >= maxAttempts) {
+      throw new BadRequestException('OTP attempts exceeded');
+    }
+
+    if (otp.code_hash !== codeHash) {
+      otp.attempts += 1;
+      await this.emailOtpRepository.save(otp);
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    otp.consumed_at = new Date();
+    await this.emailOtpRepository.save(otp);
+  }
+
+  private async updateLoginSignals(
+    user: User,
+    ip: string | null,
+    userAgent: string | null,
+    deviceHash: string | null,
+  ) {
+    user.last_login_at = new Date();
+    user.last_login_ip = ip ?? null;
+    user.last_login_user_agent_hash = this.hashUserAgent(userAgent);
+    user.last_login_device_hash = deviceHash ?? null;
+    if (!user.email_verified_at) {
+      user.email_verified_at = new Date();
+    }
+    await this.userRepository.save(user);
+  }
+
+  async requestRegisterOtp(email: string): Promise<{ message: string }> {
+    const existingUser = await this.userRepository.findOne({
+      where: { email },
+    });
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    await this.requestOtp({ email, purpose: 'register' });
+    return { message: 'OTP sent to email' };
+  }
+
+  async verifyRegisterOtp(
+    dto: RegisterDto & { otp: string },
+  ): Promise<{ message: string }> {
+    await this.verifyOtp({
+      email: dto.email,
+      purpose: 'register',
+      code: dto.otp,
+    });
+
+    return this.register(dto);
+  }
+
+  async requestForgotPasswordOtp(email: string): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (user) {
+      await this.requestOtp({
+        email,
+        purpose: 'forgot_password',
+        userId: user.id,
+      });
+    }
+    return { message: 'If the email exists, an OTP has been sent' };
+  }
+
+  async resetPasswordWithOtp(params: {
+    email: string;
+    otp: string;
+    newPassword: string;
+  }): Promise<{ message: string }> {
+    await this.verifyOtp({
+      email: params.email,
+      purpose: 'forgot_password',
+      code: params.otp,
+    });
+
+    const user = await this.userRepository.findOne({
+      where: { email: params.email },
+      select: ['id', 'email', 'password', 'email_verified_at'],
+    });
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const safePassword = validateAndSanitizePassword(params.newPassword);
+    user.password = await bcrypt.hash(safePassword, this.saltRounds);
+    if (!user.email_verified_at) {
+      user.email_verified_at = new Date();
+    }
+    await this.userRepository.save(user);
+    return { message: 'Password reset successfully' };
+  }
+
+  async verifyLoginOtp(
+    params: { email: string; otp: string },
+    device: { ip: string | null; userAgent: string | null },
+  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+    const user = await this.userRepository.findOne({
+      where: { email: params.email },
+      select: ['id', 'email', 'password'],
+    });
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const deviceHash = this.computeDeviceHash(device.ip, device.userAgent);
+    await this.verifyOtp({
+      email: params.email,
+      purpose: 'login',
+      code: params.otp,
+      deviceHash,
+    });
+
+    const { accessToken, refreshToken } = await this.generateTokens(user);
+    await this.updateLoginSignals(
+      user,
+      device.ip,
+      device.userAgent,
+      deviceHash,
+    );
+    return { accessToken, refreshToken, expiresIn: 1800 };
   }
 }
