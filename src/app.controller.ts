@@ -2,6 +2,8 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ErrorResponseDto } from './common/dto/error-response.dto';
 import { AnalyticsService } from './analytics/analytics.service';
+import { RateLimit } from './common/rate-limit/rate-limit.decorator';
+import { RATE_LIMIT_PROFILES } from './common/rate-limit/rate-limit.constants';
 
 @ApiTags('system')
 @Controller()
@@ -9,6 +11,7 @@ export class AppController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get()
+  @RateLimit(RATE_LIMIT_PROFILES.SYSTEM_HEALTH)
   @ApiOperation({ summary: 'Root - Service status' })
   @ApiResponse({ status: 200, description: 'Service is running' })
   @ApiResponse({
@@ -27,6 +30,7 @@ export class AppController {
   }
 
   @Get('health')
+  @RateLimit(RATE_LIMIT_PROFILES.SYSTEM_HEALTH)
   @ApiOperation({ summary: 'System Health Check' })
   @ApiResponse({ status: 200, description: 'Service is healthy' })
   async getHealth() {

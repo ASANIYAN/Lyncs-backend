@@ -18,7 +18,6 @@ import {
 } from '@nestjs/common';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RateLimiterGuard } from '../auth/guards/rate-limiter.guard';
 import { CreateUrlDto } from './dto/create-url.dto';
 import {
   PaginatedUrlResponseDto,
@@ -33,6 +32,8 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
+import { RATE_LIMIT_PROFILES } from '../common/rate-limit/rate-limit.constants';
 
 type AuthenticatedRequest = FastifyRequest & {
   user: {
@@ -54,6 +55,7 @@ export class RedirectController {
   ) {}
 
   @Get(':code')
+  @RateLimit(RATE_LIMIT_PROFILES.REDIRECT_PUBLIC)
   @ApiOperation({ summary: 'Redirect to original URL' })
   @ApiParam({ name: 'code', description: 'The 6-character short code' })
   @ApiResponse({
@@ -145,7 +147,11 @@ export class UrlController {
   constructor(private readonly urlService: UrlService) {}
 
   @Post('shorten')
-  @UseGuards(JwtAuthGuard, RateLimiterGuard)
+  @RateLimit(
+    RATE_LIMIT_PROFILES.URL_SHORTEN_BURST,
+    RATE_LIMIT_PROFILES.URL_SHORTEN_HOURLY,
+  )
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('Bearer')
   @ApiOperation({ summary: 'Create a shortened URL' })
   @ApiResponse({ status: 201, description: 'URL shortened successfully' })
@@ -179,6 +185,7 @@ export class UrlController {
   }
 
   @Get('dashboard')
+  @RateLimit(RATE_LIMIT_PROFILES.URL_DASHBOARD_READ)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('Bearer')
   @ApiOperation({ summary: 'Get user dashboard with shortened URLs' })
@@ -262,6 +269,7 @@ export class UrlController {
   }
 
   @Delete(':shortCode')
+  @RateLimit(RATE_LIMIT_PROFILES.URL_DELETE)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('Bearer')
   async deleteUrl(

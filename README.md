@@ -91,6 +91,30 @@ MAIL_FROM=your_verified_sender@example.com
 
 You can also use port `587` with `MAIL_SECURE=false` for STARTTLS if you prefer.
 
+## Rate limit tuning via env
+
+Rate limits have safe defaults in code, but you can override any policy from env
+without changing code.
+
+Naming convention:
+
+```bash
+RATE_<POLICY_NAME_UPPERCASE>_MAX=<requests>
+RATE_<POLICY_NAME_UPPERCASE>_WINDOW=<seconds>
+```
+
+Examples:
+
+```bash
+# login: 10 requests per 10 minutes -> change to 7 per 5 minutes
+RATE_AUTH_LOGIN_MAX=7
+RATE_AUTH_LOGIN_WINDOW=300
+
+# redirect public endpoint: 600 per minute -> change to 900 per minute
+RATE_REDIRECT_PUBLIC_MAX=900
+RATE_REDIRECT_PUBLIC_WINDOW=60
+```
+
 ## Run tests
 
 ```bash

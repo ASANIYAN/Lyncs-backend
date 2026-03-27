@@ -2,7 +2,14 @@ import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AnalyticsQueryService } from './analytics-query.service';
 import { FastifyRequest } from 'fastify';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
+import { RATE_LIMIT_PROFILES } from '../common/rate-limit/rate-limit.constants';
 
 type AuthenticatedRequest = FastifyRequest & {
   user: {
@@ -21,6 +28,7 @@ export class AnalyticsController {
   constructor(private readonly analyticsQuery: AnalyticsQueryService) {}
 
   @Get()
+  @RateLimit(RATE_LIMIT_PROFILES.URL_ANALYTICS_READ)
   @ApiOperation({ summary: 'Get analytics for a short URL' })
   @ApiQuery({
     name: 'timeRange',

@@ -33,6 +33,8 @@ import {
   ResetPasswordOtpDto,
 } from './dto/otp.dto';
 import type { FastifyRequest } from 'fastify';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
+import { RATE_LIMIT_PROFILES } from '../common/rate-limit/rate-limit.constants';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -40,6 +42,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register/request-otp')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_REGISTER_REQUEST_OTP)
   @ApiOperation({ summary: 'Request OTP to create a new account' })
   @ApiResponse({ status: 200, description: 'OTP sent' })
   @ApiResponse({
@@ -52,6 +55,7 @@ export class AuthController {
   }
 
   @Post('register')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_REGISTER_CONFIRM)
   @ApiOperation({ summary: 'Create a new user account' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({
@@ -70,6 +74,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_LOGIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login and receive access tokens' })
   @ApiResponse({
@@ -98,6 +103,7 @@ export class AuthController {
   }
 
   @Post('login/verify-otp')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_LOGIN_VERIFY_OTP)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify OTP for login on new device/IP' })
   @ApiBody({ type: VerifyLoginOtpDto })
@@ -112,6 +118,7 @@ export class AuthController {
   }
 
   @Post('forgot-password/request-otp')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_FORGOT_REQUEST_OTP)
   @ApiOperation({ summary: 'Request OTP to reset password' })
   @ApiResponse({ status: 200, description: 'OTP sent if email exists' })
   requestForgotPasswordOtp(@Body() dto: RequestOtpDto) {
@@ -119,6 +126,7 @@ export class AuthController {
   }
 
   @Post('forgot-password/confirm')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_FORGOT_CONFIRM)
   @ApiOperation({ summary: 'Reset password using OTP' })
   @ApiBody({ type: ResetPasswordOtpDto })
   @ApiResponse({ status: 200, description: 'Password reset successfully' })
@@ -127,6 +135,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_REFRESH)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate refresh token and issue new tokens' })
   @ApiBody({ type: RefreshTokenDto })
@@ -141,6 +150,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_LOGOUT)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('Bearer')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -161,6 +171,7 @@ export class AuthController {
   }
 
   @Get('profile')
+  @RateLimit(RATE_LIMIT_PROFILES.AUTH_PROFILE_READ)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('Bearer')
   @ApiOperation({ summary: 'Get authenticated user profile and usage stats' })
