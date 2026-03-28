@@ -28,6 +28,8 @@ interface AuthUser {
 export class UrlService {
   private readonly logger = new Logger(UrlService.name);
   private readonly MAX_RETRIES = 5;
+  private readonly DASHBOARD_TTL_SECONDS = 15;
+  private readonly DASHBOARD_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
   constructor(
     @InjectRepository(Url)
@@ -181,10 +183,13 @@ export class UrlService {
       throw new InternalServerErrorException('Invalid user information');
     }
 
-    // Only cache simple, non-search pages to avoid stale filtered results
+    // Only cache simple, non-search pages to avoid stale filtered results.
+    // Use a per-user version in cache keys so invalidation is O(1) via INCR.
     const isCacheable = !search && page <= 5;
-    const cacheKey = `dashboard:${userId}:p${page}:l${limit}:s${status ?? 'all'}:sb${sortBy}:so${sortOrder}`;
-    const DASHBOARD_TTL = 15; // seconds — short enough to feel live
+    const cacheVersion = isCacheable
+      ? await this.getDashboardCacheVersion(userId)
+      : null;
+    const cacheKey = `dashboard:${userId}:v${cacheVersion ?? 1}:p${page}:l${limit}:s${status ?? 'all'}:sb${sortBy}:so${sortOrder}`;
 
     if (isCacheable) {
       try {
@@ -230,7 +235,7 @@ export class UrlService {
 
       if (isCacheable) {
         this.redisService
-          .set(cacheKey, JSON.stringify(result), DASHBOARD_TTL)
+          .set(cacheKey, JSON.stringify(result), this.DASHBOARD_TTL_SECONDS)
           .catch(() => {});
       }
 
@@ -242,16 +247,39 @@ export class UrlService {
     }
   }
 
-  /** Bust all cached dashboard pages for a user (called on create/delete). */
+  /**
+   * Bust all cached dashboard pages for a user (called on create/delete).
+   * Version bump invalidation avoids expensive wildcard scans.
+   */
   private async bustDashboardCache(userId: string): Promise<void> {
     try {
-      const client = this.redisService.getClient();
-      const keys = await client.keys(`dashboard:${userId}:*`);
-      if (keys.length > 0) {
-        await client.del(...keys);
+      const versionKey = this.getDashboardVersionKey(userId);
+      const nextVersion = await this.redisService.incr(versionKey);
+      if (nextVersion === 1) {
+        await this.redisService.expire(
+          versionKey,
+          this.DASHBOARD_VERSION_TTL_SECONDS,
+        );
       }
     } catch {
       // non-critical — stale cache will expire naturally
+    }
+  }
+
+  private getDashboardVersionKey(userId: string): string {
+    return `dashboard:ver:${userId}`;
+  }
+
+  private async getDashboardCacheVersion(userId: string): Promise<number> {
+    try {
+      const rawVersion = await this.redisService.get(
+        this.getDashboardVersionKey(userId),
+      );
+      if (!rawVersion) return 1;
+      const parsed = Number.parseInt(rawVersion, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    } catch {
+      return 1;
     }
   }
 
@@ -275,7 +303,6 @@ export class UrlService {
     // Bust dashboard + profile caches — urlCount changed
     this.bustDashboardCache(userId).catch(() => {});
     this.redisService
-
       .getClient()
       .del(`profile:${userId}`)
       .catch(() => {});
