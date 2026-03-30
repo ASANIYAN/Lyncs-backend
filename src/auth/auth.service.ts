@@ -427,8 +427,9 @@ export class AuthService {
     ip: string | null,
     userAgent: string | null,
   ): string | null {
-    if (!ip || !userAgent) return null;
-    return createHash('sha256').update(`${ip}|${userAgent}`).digest('hex');
+    if (!userAgent) return null;
+    // Use user-agent only to avoid OTPs caused by frequent IP changes (mobile/VPN/CDN).
+    return createHash('sha256').update(userAgent).digest('hex');
   }
 
   private async requestOtp(params: {
