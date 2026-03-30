@@ -14,7 +14,7 @@ import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '../common/redis/redis.service';
 import { EmailService } from '../common/mailer/mailer.service';
 import { LoginDto } from './dto/login.dto';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, QueryFailedError, Repository } from 'typeorm';
 import { RegisterDto } from './dto/register.dto';
 import { validateAndSanitizePassword } from './utils/password.validator';
 import { User } from './dto/entities/user.entity';
@@ -103,13 +103,14 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterDto): Promise<{ message: string }> {
-    const { email, password } = registerDto;
+    const email = this.normalizeEmail(registerDto.email);
+    const { password } = registerDto;
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
     });
     if (existingUser) {
-      throw new ConflictException('User with this email already exists');
+      throw new ConflictException('Account already exists, please login');
     }
 
     try {
@@ -140,7 +141,8 @@ export class AuthService {
     | { accessToken: string; refreshToken: string; expiresIn: number }
     | { otpRequired: true; message: string }
   > {
-    const { email, password } = loginDto;
+    const email = this.normalizeEmail(loginDto.email);
+    const { password } = loginDto;
     const timings: Record<string, number> = {};
 
     const t0 = performance.now();
@@ -168,6 +170,12 @@ export class AuthService {
     if (!isPasswordValid) {
       this.logger.debug('[login] timings ms:', timings);
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.email_verified_at) {
+      throw new UnauthorizedException(
+        'Please complete signup and verify your account',
+      );
     }
 
     const deviceHash = this.computeDeviceHash(device.ip, device.userAgent);
@@ -402,6 +410,19 @@ export class AuthService {
     return createHash('sha256').update(userAgent).digest('hex');
   }
 
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return (
+      error instanceof QueryFailedError &&
+      typeof (error as QueryFailedError & { code?: unknown }).code ===
+        'string' &&
+      (error as QueryFailedError & { code: string }).code === '23505'
+    );
+  }
+
   private computeDeviceHash(
     ip: string | null,
     userAgent: string | null,
@@ -508,34 +529,116 @@ export class AuthService {
   }
 
   async requestRegisterOtp(email: string): Promise<{ message: string }> {
-    const existingUser = await this.userRepository.findOne({
-      where: { email },
+    const normalizedEmail = this.normalizeEmail(email);
+    let user = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
     });
-    if (existingUser) {
-      throw new ConflictException('User with this email already exists');
+
+    if (user?.email_verified_at) {
+      throw new ConflictException('Account already exists, please login');
     }
 
-    await this.requestOtp({ email, purpose: 'register' });
+    if (!user) {
+      // Pending accounts need a placeholder hash until signup is confirmed.
+      const placeholderPassword = `pending:${Date.now()}:${randomInt(1_000_000, 9_999_999)}`;
+      const placeholderHash = await this.hashPassword(placeholderPassword);
+
+      try {
+        user = this.userRepository.create({
+          email: normalizedEmail,
+          password: placeholderHash,
+          email_verified_at: null,
+        });
+        user = await this.userRepository.save(user);
+      } catch (error) {
+        if (!this.isUniqueViolation(error)) {
+          throw error;
+        }
+
+        user = await this.userRepository.findOne({
+          where: { email: normalizedEmail },
+        });
+        if (!user) {
+          throw new InternalServerErrorException('Failed to initiate signup');
+        }
+        if (user.email_verified_at) {
+          throw new ConflictException('Account already exists, please login');
+        }
+      }
+    }
+
+    await this.requestOtp({
+      email: normalizedEmail,
+      purpose: 'register',
+      userId: user.id,
+    });
     return { message: 'OTP sent to email' };
   }
 
   async verifyRegisterOtp(
     dto: RegisterDto & { otp: string },
   ): Promise<{ message: string }> {
+    const normalizedEmail = this.normalizeEmail(dto.email);
+
     await this.verifyOtp({
-      email: dto.email,
+      email: normalizedEmail,
       purpose: 'register',
       code: dto.otp,
     });
 
-    return this.register(dto);
+    const safePassword = validateAndSanitizePassword(dto.password);
+    const hashedPassword = await bcrypt.hash(safePassword, this.saltRounds);
+
+    try {
+      await this.userRepository.manager.transaction(async manager => {
+        const repository = manager.getRepository(User);
+        const existingUser = await repository.findOne({
+          where: { email: normalizedEmail },
+          select: ['id', 'email', 'password', 'email_verified_at'],
+        });
+
+        if (existingUser?.email_verified_at) {
+          throw new ConflictException('Account already exists, please login');
+        }
+
+        if (existingUser) {
+          existingUser.password = hashedPassword;
+          existingUser.email_verified_at = new Date();
+          await repository.save(existingUser);
+          return;
+        }
+
+        const user = repository.create({
+          email: normalizedEmail,
+          password: hashedPassword,
+          email_verified_at: new Date(),
+        });
+        await repository.save(user);
+      });
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        throw error;
+      }
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException('Account already exists, please login');
+      }
+
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Registration confirm failed: ${msg}`);
+      throw new InternalServerErrorException('Registration failed');
+    }
+
+    return { message: 'User registered successfully' };
   }
 
   async requestForgotPasswordOtp(email: string): Promise<{ message: string }> {
-    const user = await this.userRepository.findOne({ where: { email } });
-    if (user) {
+    const normalizedEmail = this.normalizeEmail(email);
+    const user = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+    });
+    if (user?.email_verified_at) {
       await this.requestOtp({
-        email,
+        email: normalizedEmail,
         purpose: 'forgot_password',
         userId: user.id,
       });
@@ -548,25 +651,27 @@ export class AuthService {
     otp: string;
     newPassword: string;
   }): Promise<{ message: string }> {
+    const normalizedEmail = this.normalizeEmail(params.email);
+
     await this.verifyOtp({
-      email: params.email,
+      email: normalizedEmail,
       purpose: 'forgot_password',
       code: params.otp,
     });
 
     const user = await this.userRepository.findOne({
-      where: { email: params.email },
+      where: { email: normalizedEmail },
       select: ['id', 'email', 'password', 'email_verified_at'],
     });
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
+    if (!user.email_verified_at) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     const safePassword = validateAndSanitizePassword(params.newPassword);
     user.password = await bcrypt.hash(safePassword, this.saltRounds);
-    if (!user.email_verified_at) {
-      user.email_verified_at = new Date();
-    }
     await this.userRepository.save(user);
     return { message: 'Password reset successfully' };
   }
@@ -575,8 +680,9 @@ export class AuthService {
     params: { email: string; otp: string },
     device: { ip: string | null; userAgent: string | null },
   ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+    const normalizedEmail = this.normalizeEmail(params.email);
     const user = await this.userRepository.findOne({
-      where: { email: params.email },
+      where: { email: normalizedEmail },
       select: ['id', 'email', 'password'],
     });
     if (!user) {
@@ -585,7 +691,7 @@ export class AuthService {
 
     const deviceHash = this.computeDeviceHash(device.ip, device.userAgent);
     await this.verifyOtp({
-      email: params.email,
+      email: normalizedEmail,
       purpose: 'login',
       code: params.otp,
       deviceHash,
