@@ -43,7 +43,7 @@ export class AnalyticsQueryService {
       throw new NotFoundException('URL not found');
     }
 
-    if (url.user.id !== userId) {
+    if (url.user.public_id !== userId) {
       throw new ForbiddenException(
         'Not authorized to view analytics for this URL',
       );

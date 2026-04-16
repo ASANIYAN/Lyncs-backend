@@ -9,6 +9,9 @@ import type { FastifyRequest } from 'fastify';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../common/redis/redis.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../dto/entities/user.entity';
 
 type AuthenticatedRequest = FastifyRequest & {
   user?: {
@@ -29,6 +32,8 @@ export class JwtAuthGuard implements CanActivate {
     private redisService: RedisService,
     private jwtService: JwtService,
     configService: ConfigService,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {
     this.jwtSecret = configService.getOrThrow<string>('JWT_ACCESS_SECRET');
   }
@@ -55,8 +60,10 @@ export class JwtAuthGuard implements CanActivate {
         exp: number;
       }>(token, { secret: this.jwtSecret });
 
+      const userId = await this.resolvePublicUserId(payload.sub);
+
       request.user = {
-        id: payload.sub,
+        id: userId,
         email: payload.email,
         iat: payload.iat,
         exp: payload.exp,
@@ -82,5 +89,25 @@ export class JwtAuthGuard implements CanActivate {
 
     const token = authHeader.slice(spaceIdx + 1).trim();
     return token.length > 0 ? token : undefined;
+  }
+
+  private isLegacyNumericUserId(subject: string): boolean {
+    return /^[0-9]+$/.test(subject);
+  }
+
+  private async resolvePublicUserId(subject: string): Promise<string> {
+    if (!this.isLegacyNumericUserId(subject)) {
+      return subject;
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: subject, is_active: true },
+      select: ['id', 'public_id'],
+    });
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+
+    return user.public_id;
   }
 }

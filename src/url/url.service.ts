@@ -34,6 +34,8 @@ export class UrlService {
   constructor(
     @InjectRepository(Url)
     private readonly urlRepository: Repository<Url>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly generator: Base62Generator,
     private readonly safetyService: SafetyService,
     private readonly redisService: RedisService,
@@ -89,11 +91,19 @@ export class UrlService {
       throw new InternalServerErrorException('Invalid user information');
     }
 
+    const owner = await this.userRepository.findOne({
+      where: { public_id: userId, is_active: true },
+      select: ['id', 'public_id'],
+    });
+    if (!owner) {
+      throw new InternalServerErrorException('Invalid user information');
+    }
+
     const { normalized, hash } = this.urlNormalizer.normalizeUrl(originalUrl);
 
     const existing = await this.urlRepository.findOne({
       where: {
-        user: { id: userId },
+        user: { public_id: userId },
         url_hash: hash,
         is_active: true,
       },
@@ -117,7 +127,7 @@ export class UrlService {
         const newUrl = this.urlRepository.create({
           original_url: originalUrl,
           short_code: shortCode,
-          user: { id: userId } as User, // Create relationship with just the ID
+          user: { id: owner.id } as User, // Create relationship with just the internal ID
           click_count: 0,
           normalized_url: normalized,
           url_hash: hash,
@@ -211,7 +221,7 @@ export class UrlService {
       const query = this.urlRepository
         .createQueryBuilder('url')
         .innerJoin('url.user', 'user')
-        .where('user.id = :userId', { userId });
+        .where('user.public_id = :userId', { userId });
 
       this.applyDashboardFilters(query, search, status);
 
@@ -293,7 +303,7 @@ export class UrlService {
       throw new NotFoundException('URL not found');
     }
 
-    if (url.user.id !== userId) {
+    if (url.user.public_id !== userId) {
       throw new ForbiddenException('Not authorized to delete this URL');
     }
 

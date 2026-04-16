@@ -72,7 +72,7 @@ export class AuthService {
   }
 
   async generateTokens(user: User) {
-    const payload = { sub: user.id, email: user.email };
+    const payload = { sub: user.public_id, email: user.email };
 
     const t0 = performance.now();
     const [accessToken, refreshToken] = await Promise.all([
@@ -150,6 +150,7 @@ export class AuthService {
       where: { email },
       select: [
         'id',
+        'public_id',
         'email',
         'password',
         'last_login_device_hash',
@@ -275,16 +276,16 @@ export class AuthService {
         throw new UnauthorizedException('Invalid or expired refresh token');
       }
 
-      if (stored.user.id !== payload.sub) {
+      const subjectMatchesStoredUser =
+        stored.user.public_id === payload.sub || stored.user.id === payload.sub;
+      if (!subjectMatchesStoredUser) {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
       stored.revoked = true;
       await this.refreshTokenRepository.save(stored);
 
-      const user = await this.userRepository.findOne({
-        where: { id: payload.sub, is_active: true },
-      });
+      const user = await this.findActiveUserBySubject(payload.sub);
       if (!user) {
         throw new UnauthorizedException('Invalid refresh token');
       }
@@ -328,7 +329,7 @@ export class AuthService {
     s = performance.now();
     const row = await this.userRepository
       .createQueryBuilder('user')
-      .select('user.id', 'id')
+      .select('user.public_id', 'id')
       .addSelect('user.email', 'email')
       .addSelect('user.created_at', 'createdAt')
       .addSelect(
@@ -337,8 +338,9 @@ export class AuthService {
       )
       .addSelect('COALESCE(SUM(u.click_count), 0)', 'totalClicks')
       .leftJoin('urls', 'u', 'u.user_id = user.id')
-      .where('user.id = :userId', { userId })
+      .where('user.public_id = :userId', { userId })
       .groupBy('user.id')
+      .addGroupBy('user.public_id')
       .addGroupBy('user.email')
       .addGroupBy('user.created_at')
       .getRawOne<{
@@ -412,6 +414,22 @@ export class AuthService {
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  private isLegacyNumericUserId(subject: string): boolean {
+    return /^[0-9]+$/.test(subject);
+  }
+
+  private async findActiveUserBySubject(subject: string): Promise<User | null> {
+    if (this.isLegacyNumericUserId(subject)) {
+      return this.userRepository.findOne({
+        where: { id: subject, is_active: true },
+      });
+    }
+
+    return this.userRepository.findOne({
+      where: { public_id: subject, is_active: true },
+    });
   }
 
   private isUniqueViolation(error: unknown): boolean {
@@ -684,7 +702,7 @@ export class AuthService {
     const normalizedEmail = this.normalizeEmail(params.email);
     const user = await this.userRepository.findOne({
       where: { email: normalizedEmail },
-      select: ['id', 'email', 'password'],
+      select: ['id', 'public_id', 'email', 'password'],
     });
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');

@@ -14,6 +14,10 @@ export class User {
   id: string;
 
   @Index({ unique: true })
+  @Column({ type: 'uuid', unique: true, default: () => 'gen_random_uuid()' })
+  public_id: string;
+
+  @Index({ unique: true })
   @Column({ unique: true })
   email: string;
 

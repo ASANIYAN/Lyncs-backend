@@ -15,6 +15,7 @@ import { User } from '../auth/dto/entities/user.entity';
 import type { Repository } from 'typeorm';
 
 type UrlRepositoryMock = Pick<Repository<Url>, 'findOne' | 'create' | 'save'>;
+type UserRepositoryMock = Pick<Repository<User>, 'findOne'>;
 type AuthUser = {
   id: string;
   email: string;
@@ -32,6 +33,7 @@ function createMockUrl(overrides: Partial<Url> = {}): Url {
     url_hash: 'hash1',
     user: {
       id: '1',
+      public_id: '00000000-0000-4000-8000-000000000001',
       email: 'test@example.com',
       password: 'hashed',
       created_at: new Date(),
@@ -51,13 +53,14 @@ function createMockUrl(overrides: Partial<Url> = {}): Url {
 describe('UrlService', () => {
   let service: UrlService;
   let repo: jest.Mocked<UrlRepositoryMock>;
+  let userRepo: jest.Mocked<UserRepositoryMock>;
   let generator: jest.Mocked<Base62Generator>;
   let safetyService: jest.Mocked<SafetyService>;
   let urlNormalizer: jest.Mocked<UrlNormalizerService>;
   let analyticsService: jest.Mocked<AnalyticsService>;
 
   const mockUser: AuthUser = {
-    id: '1',
+    id: '00000000-0000-4000-8000-000000000001',
     email: 'test@example.com',
     iat: 0,
     exp: 0,
@@ -73,6 +76,12 @@ describe('UrlService', () => {
             findOne: jest.fn(),
             create: jest.fn(),
             save: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(User),
+          useValue: {
+            findOne: jest.fn(),
           },
         },
         {
@@ -107,6 +116,7 @@ describe('UrlService', () => {
 
     service = module.get<UrlService>(UrlService);
     repo = module.get(getRepositoryToken(Url));
+    userRepo = module.get(getRepositoryToken(User));
     generator = module.get(Base62Generator);
     safetyService = module.get(SafetyService);
     urlNormalizer = module.get(UrlNormalizerService);
@@ -122,6 +132,10 @@ describe('UrlService', () => {
   });
 
   it('should succeed on first try if no collision', async () => {
+    userRepo.findOne.mockResolvedValue({
+      id: '1',
+      public_id: mockUser.id,
+    } as User);
     safetyService.isDomainBlocked.mockResolvedValue(false);
     urlNormalizer.normalizeUrl.mockReturnValue({
       normalized: 'https://google.com',
@@ -142,6 +156,10 @@ describe('UrlService', () => {
   });
 
   it('should retry if a collision occurs', async () => {
+    userRepo.findOne.mockResolvedValue({
+      id: '1',
+      public_id: mockUser.id,
+    } as User);
     safetyService.isDomainBlocked.mockResolvedValue(false);
     urlNormalizer.normalizeUrl.mockReturnValue({
       normalized: 'https://google.com',
@@ -173,6 +191,10 @@ describe('UrlService', () => {
   });
 
   it('should fail after 5 consecutive collisions', async () => {
+    userRepo.findOne.mockResolvedValue({
+      id: '1',
+      public_id: mockUser.id,
+    } as User);
     safetyService.isDomainBlocked.mockResolvedValue(false);
     urlNormalizer.normalizeUrl.mockReturnValue({
       normalized: 'https://google.com',
