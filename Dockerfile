@@ -24,7 +24,7 @@ WORKDIR /app
 
 # Set production environment
 ENV NODE_ENV=${NODE_ENV}
-# Senior Tip: Match the threadpool size we discussed in Phase 1
+
 ENV UV_THREADPOOL_SIZE=${THREADPOOL_SIZE}
 ENV PORT=${PORT}
 
