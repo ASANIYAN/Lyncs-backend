@@ -138,10 +138,7 @@ export class AuthService {
   async login(
     loginDto: LoginDto,
     device: { ip: string | null; userAgent: string | null },
-  ): Promise<
-    | { accessToken: string; refreshToken: string; expiresIn: number }
-    | { otpRequired: true; message: string }
-  > {
+  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
     const email = this.normalizeEmail(loginDto.email);
     const { password } = loginDto;
     const timings: Record<string, number> = {};
@@ -155,7 +152,6 @@ export class AuthService {
         'email',
         'password',
         'last_login_device_hash',
-        'email_verified_at',
       ], // Explicitly select password
     });
     timings['db_findUser'] = parseFloat((performance.now() - t0).toFixed(2));
@@ -174,31 +170,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (!user.email_verified_at) {
-      throw new UnauthorizedException(
-        'Please complete signup and verify your account',
-      );
-    }
-
     const deviceHash = this.computeDeviceHash(device.ip, device.userAgent);
-    const requiresOtp =
-      !!deviceHash && user.last_login_device_hash !== deviceHash;
-
-    if (requiresOtp) {
-      await this.requestOtp({
-        email: user.email,
-        purpose: 'login',
-        userId: user.id,
-        deviceHash,
-        ip: device.ip,
-        userAgent: device.userAgent,
-      });
-      this.logger.debug('[login] timings ms:', timings);
-      return {
-        otpRequired: true,
-        message: 'OTP sent to email. Verify to complete login.',
-      };
-    }
 
     const t2 = performance.now();
     const { accessToken, refreshToken } = await this.generateTokens(user);
