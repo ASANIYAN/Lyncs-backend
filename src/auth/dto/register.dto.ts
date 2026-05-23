@@ -14,7 +14,7 @@ export class RegisterDto {
   })
   @IsEmail({}, { message: 'Please provide a valid email address' })
   @IsNotEmpty()
-  email: string;
+  'email': string;
 
   @ApiProperty({
     example: 'SecurePass123#',
@@ -25,5 +25,5 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(8, { message: 'Password must be at least 8 characters long' })
   @MaxLength(32, { message: 'Password cannot exceed 32 characters' })
-  password: string;
+  'password': string;
 }
