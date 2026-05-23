@@ -42,6 +42,9 @@ export const envValidationSchema = Joi.object({
   MAIL_USER: Joi.string().required(),
   MAIL_PASS: Joi.string().required(),
   MAIL_FROM: Joi.string().email().required(),
+  MAIL_CONNECTION_TIMEOUT_MS: Joi.number().default(8000),
+  MAIL_GREETING_TIMEOUT_MS: Joi.number().default(8000),
+  MAIL_SOCKET_TIMEOUT_MS: Joi.number().default(10000),
 
   // Business Logic
   MAX_URLS_PER_HOUR: Joi.number().default(50),

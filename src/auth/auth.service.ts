@@ -7,6 +7,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   ConflictException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -217,7 +218,9 @@ export class AuthService {
   async logout(token: string): Promise<void> {
     try {
       // Decode without verification just to get the 'exp' claim
-      const decoded = this.jwtService.decode(token);
+      const decoded = this.jwtService.decode<{ exp?: number; sub?: string }>(
+        token,
+      );
 
       // If decoded is not an object, or doesn't have a numeric exp, return early
       if (!decoded || typeof decoded !== 'object') {
@@ -241,10 +244,9 @@ export class AuthService {
       }
 
       // Bust the profile cache so the next GET /auth/profile re-fetches from DB
-      const decoded2 = this.jwtService.decode(token);
       const sub =
-        decoded2 && typeof decoded2 === 'object' && 'sub' in decoded2
-          ? (decoded2 as { sub: string }).sub
+        decoded && typeof decoded === 'object' && 'sub' in decoded
+          ? (decoded as { sub: string }).sub
           : null;
       if (sub) {
         await this.redisService.getClient().del(`profile:${sub}`);
@@ -483,7 +485,17 @@ export class AuthService {
     });
     await this.emailOtpRepository.save(entity);
 
-    await this.emailService.sendOtpEmail(params.email, code, params.purpose);
+    try {
+      await this.emailService.sendOtpEmail(params.email, code, params.purpose);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `OTP email delivery failed for ${params.purpose}: ${msg}`,
+      );
+      throw new ServiceUnavailableException(
+        'Unable to send verification code right now. Please try again shortly.',
+      );
+    }
   }
 
   private async verifyOtp(params: {

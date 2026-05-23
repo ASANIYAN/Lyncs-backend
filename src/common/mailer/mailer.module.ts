@@ -14,6 +14,12 @@ import { EmailService } from './mailer.service';
           host: config.get<string>('MAIL_HOST'),
           port: config.get<number>('MAIL_PORT', 587),
           secure: config.get<boolean>('MAIL_SECURE', false),
+          connectionTimeout: config.get<number>(
+            'MAIL_CONNECTION_TIMEOUT_MS',
+            8000,
+          ),
+          greetingTimeout: config.get<number>('MAIL_GREETING_TIMEOUT_MS', 8000),
+          socketTimeout: config.get<number>('MAIL_SOCKET_TIMEOUT_MS', 10000),
           auth: {
             user: config.get<string>('MAIL_USER'),
             pass: config.get<string>('MAIL_PASS'),
