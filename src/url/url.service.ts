@@ -171,7 +171,7 @@ export class UrlService {
 
   async findAllByUser(
     user: AuthUser,
-    page: number = 1,
+    page: number = 0,
     limit: number = 10,
   ): Promise<[Url[], number]> {
     return this.getDashboard(user.id, page, limit).then(result => [
@@ -182,7 +182,7 @@ export class UrlService {
 
   async getDashboard(
     userId: string,
-    page = 1,
+    page = 0,
     limit = 20,
     search?: string,
     status?: string,
@@ -195,7 +195,7 @@ export class UrlService {
 
     // Only cache simple, non-search pages to avoid stale filtered results.
     // Use a per-user version in cache keys so invalidation is O(1) via INCR.
-    const isCacheable = !search && page <= 5;
+    const isCacheable = !search && page <= 4;
     const cacheVersion = isCacheable
       ? await this.getDashboardCacheVersion(userId)
       : null;
@@ -232,7 +232,7 @@ export class UrlService {
       query.orderBy(`url.${sortColumn}`, sortOrder);
 
       const [data, total] = await query
-        .skip((page - 1) * limit)
+        .skip(page * limit)
         .take(limit)
         .getManyAndCount();
 
@@ -240,7 +240,7 @@ export class UrlService {
         data,
         total,
         page,
-        lastPage: Math.ceil(total / limit),
+        lastPage: Math.max(0, Math.ceil(total / limit) - 1),
       };
 
       if (isCacheable) {

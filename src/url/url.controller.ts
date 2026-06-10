@@ -193,8 +193,8 @@ export class UrlController {
     name: 'page',
     required: false,
     type: Number,
-    example: 1,
-    description: 'Page number (default: 1)',
+    example: 0,
+    description: 'Page number, 0-indexed (default: 0)',
   })
   @ApiQuery({
     name: 'limit',
@@ -243,7 +243,7 @@ export class UrlController {
   })
   async getUserUrls(
     @Req() req: AuthenticatedRequest,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('page', new DefaultValuePipe(0), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Query('status') status: string = 'active',
     @Query('sortBy') sortBy = 'created_at',
