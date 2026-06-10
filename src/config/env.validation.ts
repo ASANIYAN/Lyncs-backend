@@ -35,16 +35,9 @@ export const envValidationSchema = Joi.object({
   OTP_TTL_SECONDS: Joi.number().default(600),
   OTP_MAX_ATTEMPTS: Joi.number().default(5),
 
-  // Mailer (SMTP)
-  MAIL_HOST: Joi.string().required(),
-  MAIL_PORT: Joi.number().default(587),
-  MAIL_SECURE: Joi.boolean().default(false),
-  MAIL_USER: Joi.string().required(),
-  MAIL_PASS: Joi.string().required(),
+  // Mailer (Brevo HTTP API)
+  BREVO_API_KEY: Joi.string().required(),
   MAIL_FROM: Joi.string().email().required(),
-  MAIL_CONNECTION_TIMEOUT_MS: Joi.number().default(8000),
-  MAIL_GREETING_TIMEOUT_MS: Joi.number().default(8000),
-  MAIL_SOCKET_TIMEOUT_MS: Joi.number().default(10000),
 
   // Business Logic
   MAX_URLS_PER_HOUR: Joi.number().default(50),

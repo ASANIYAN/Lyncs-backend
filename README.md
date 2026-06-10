@@ -51,6 +51,7 @@ This project follows a **modular monolith** architecture in NestJS.
 - **JWT + bcrypt**: standard auth and password hashing primitives
 - **Joi + class-validator**: robust env and request validation
 - **Swagger/OpenAPI**: live API documentation for faster integration
+- **Brevo HTTP API**: transactional email for OTP delivery (avoids outbound SMTP blocks on cloud platforms)
 
 ## Project setup
 
@@ -67,7 +68,8 @@ Create `.env.local` (or `.env`) with required variables:
 - `DATABASE_URL` **or** all of: `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
 - `REDIS_URL`
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
-- `MAIL_HOST`, `MAIL_PORT`, `MAIL_SECURE`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`
+- `BREVO_API_KEY` — get free at brevo.com (300 emails/day, no credit card)
+- `MAIL_FROM` — the verified sender email registered in your Brevo account
 
 Optional tuning:
 
